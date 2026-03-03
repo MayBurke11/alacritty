@@ -100,12 +100,14 @@ version = "0.26.1-dev"
 dependencies = [
  "base64",
  "bitflags 2.9.4",
+ "flate2",
  "home",
  "libc",
  "log",
  "miow",
  "parking_lot",
  "piper",
+ "png",
  "polling",
  "regex-automata",
  "rustix 1.1.2",
@@ -2124,8 +2126,7 @@ dependencies = [
 [[package]]
 name = "vte-graphics"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7d926313d94a0ef0d992fe9ab507451cdb4a7977e653155c8e4fa9b69c178f"
+source = "git+https://github.com/dsturnbull/vte.git?branch=kitty#2e2cea1d96c499c9d1b16c255ce698ac2cd1f59b"
 dependencies = [
  "arrayvec",
  "bitflags 2.9.4",

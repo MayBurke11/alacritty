@@ -736,6 +736,11 @@ impl<T> Term<T> {
         &self.mode
     }
 
+    /// Get a reference to the event proxy for sending events.
+    pub fn event_proxy(&self) -> &T {
+        &self.event_proxy
+    }
+
     /// Swap primary and alternate screen buffer.
     pub fn swap_alt(&mut self) {
         if !self.mode.contains(TermMode::ALT_SCREEN) {
@@ -2373,6 +2378,42 @@ impl<T: EventListener> Handler for Term<T> {
             debug!("[unhandled dcs_unhook]");
         }
     }
+
+    /// Start of an APC (Application Program Command) sequence.
+    fn apc_start(&mut self) {
+        let buf = self
+            .graphics
+            .kitty_apc_buffer
+            .get_or_insert_with(crate::graphics::kitty_parser::KittyApcBuffer::new);
+        buf.start();
+    }
+
+    /// Byte of an APC string.
+    fn apc_put(&mut self, byte: u8) {
+        if let Some(buf) = &mut self.graphics.kitty_apc_buffer {
+            buf.put(byte);
+        }
+    }
+
+    /// End of an APC string.
+    fn apc_end(&mut self) {
+        if let Some(buf) = &mut self.graphics.kitty_apc_buffer {
+            if let Some(cmd) = buf.finish() {
+                debug!(
+                    "[kitty] command: action={:?}, id={}, fmt={:?}, medium={:?}, \
+                     more={}, payload_len={}",
+                    cmd.action,
+                    cmd.image_id,
+                    cmd.format,
+                    cmd.medium,
+                    cmd.more_chunks,
+                    cmd.payload.len(),
+                );
+                self.graphics.last_kitty_command = Some(cmd.clone());
+                crate::graphics::kitty::dispatch_command(self, cmd);
+            }
+        }
+    }
 }
 
 /// The state of the [`Mode`] and [`PrivateMode`].
@@ -2529,11 +2570,30 @@ pub mod test {
     pub struct TermSize {
         pub columns: usize,
         pub screen_lines: usize,
+        /// Cell width in pixels (used by sixel/graphics). Defaults to 8.
+        #[cfg_attr(feature = "serde", serde(default = "TermSize::default_cell_width"))]
+        pub cell_width: f32,
+        /// Cell height in pixels (used by sixel/graphics). Defaults to 16.
+        #[cfg_attr(feature = "serde", serde(default = "TermSize::default_cell_height"))]
+        pub cell_height: f32,
     }
 
     impl TermSize {
         pub fn new(columns: usize, screen_lines: usize) -> Self {
-            Self { columns, screen_lines }
+            Self {
+                columns,
+                screen_lines,
+                cell_width: Self::default_cell_width(),
+                cell_height: Self::default_cell_height(),
+            }
+        }
+
+        fn default_cell_width() -> f32 {
+            8.0
+        }
+
+        fn default_cell_height() -> f32 {
+            16.0
         }
     }
 
@@ -2548,6 +2608,14 @@ pub mod test {
 
         fn columns(&self) -> usize {
             self.columns
+        }
+
+        fn cell_width(&self) -> f32 {
+            self.cell_width
+        }
+
+        fn cell_height(&self) -> f32 {
+            self.cell_height
         }
     }
 
@@ -3402,5 +3470,133 @@ mod tests {
         assert_eq!(version_number("0.1.2-dev"), 1_02);
         assert_eq!(version_number("1.2.3-dev"), 1_02_03);
         assert_eq!(version_number("999.99.99"), 9_99_99_99);
+    }
+
+    // ── Kitty graphics APC integration tests ──────────────────────────
+
+    /// Feed raw bytes through the full VTE pipeline (Processor → Parser → Term).
+    fn feed_bytes(term: &mut Term<VoidListener>, bytes: &[u8]) {
+        let mut processor: crate::vte::ansi::Processor = crate::vte::ansi::Processor::new();
+        processor.advance(term, bytes);
+    }
+
+    /// Helper to get the last parsed kitty command from a term.
+    fn take_kitty_cmd(
+        term: &mut Term<VoidListener>,
+    ) -> Option<crate::graphics::kitty_parser::KittyCommand> {
+        term.graphics.last_kitty_command.take()
+    }
+
+    #[test]
+    fn kitty_apc_transmit_and_display_png() {
+        use crate::graphics::kitty_parser::{Action, Format, Medium};
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        // ESC _ G a=T,f=100,i=1;AAAA ESC \
+        feed_bytes(&mut term, b"\x1b_Ga=T,f=100,i=1;AAAA\x1b\\");
+
+        let cmd = take_kitty_cmd(&mut term).expect("should have parsed a kitty command");
+        assert_eq!(cmd.action, Action::TransmitAndDisplay);
+        assert_eq!(cmd.format, Format::Png);
+        assert_eq!(cmd.medium, Medium::Direct);
+        assert_eq!(cmd.image_id, 1);
+        assert_eq!(cmd.payload, b"AAAA");
+        assert!(!cmd.more_chunks);
+    }
+
+    #[test]
+    fn kitty_apc_query() {
+        use crate::graphics::kitty_parser::Action;
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        feed_bytes(&mut term, b"\x1b_Ga=q,i=42,f=100;\x1b\\");
+
+        let cmd = take_kitty_cmd(&mut term).expect("should have parsed a query");
+        assert_eq!(cmd.action, Action::Query);
+        assert_eq!(cmd.image_id, 42);
+    }
+
+    #[test]
+    fn kitty_apc_delete_all() {
+        use crate::graphics::kitty_parser::{Action, DeleteTarget};
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        feed_bytes(&mut term, b"\x1b_Ga=d,d=a\x1b\\");
+
+        let cmd = take_kitty_cmd(&mut term).expect("should have parsed a delete");
+        assert_eq!(cmd.action, Action::Delete);
+        assert_eq!(cmd.delete, Some(DeleteTarget::All));
+    }
+
+    #[test]
+    fn kitty_apc_chunked_sequence() {
+        use crate::graphics::kitty_parser::Action;
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        // First chunk: m=1 (more coming).
+        feed_bytes(&mut term, b"\x1b_Ga=T,f=100,m=1;chunk1\x1b\\");
+        let cmd1 = take_kitty_cmd(&mut term).expect("should parse first chunk");
+        assert_eq!(cmd1.action, Action::TransmitAndDisplay);
+        assert!(cmd1.more_chunks);
+        assert_eq!(cmd1.payload, b"chunk1");
+
+        // Last chunk: m=0.
+        feed_bytes(&mut term, b"\x1b_Gm=0;chunk2\x1b\\");
+        let cmd2 = take_kitty_cmd(&mut term).expect("should parse last chunk");
+        assert!(!cmd2.more_chunks);
+        assert_eq!(cmd2.payload, b"chunk2");
+    }
+
+    #[test]
+    fn kitty_apc_display_with_placement() {
+        use crate::graphics::kitty_parser::Action;
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        feed_bytes(&mut term, b"\x1b_Ga=p,i=5,p=1,c=10,r=5,z=-1,C=1\x1b\\");
+
+        let cmd = take_kitty_cmd(&mut term).expect("should parse display command");
+        assert_eq!(cmd.action, Action::Display);
+        assert_eq!(cmd.image_id, 5);
+        assert_eq!(cmd.placement_id, 1);
+        assert_eq!(cmd.columns, 10);
+        assert_eq!(cmd.rows, 5);
+        assert_eq!(cmd.z_index, -1);
+        assert_eq!(cmd.cursor_movement, 1);
+    }
+
+    #[test]
+    fn kitty_apc_non_kitty_ignored() {
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        // APC that doesn't start with 'G' — not kitty graphics.
+        feed_bytes(&mut term, b"\x1b_Xsomething\x1b\\");
+
+        assert!(take_kitty_cmd(&mut term).is_none());
+    }
+
+    #[test]
+    fn kitty_apc_interleaved_with_text() {
+        use crate::graphics::kitty_parser::Action;
+
+        let size = TermSize::new(80, 24);
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+
+        // Text, then kitty command, then more text.
+        feed_bytes(&mut term, b"Hello\x1b_Ga=q,i=1\x1b\\World");
+
+        let cmd = take_kitty_cmd(&mut term).expect("should parse command amid text");
+        assert_eq!(cmd.action, Action::Query);
+        assert_eq!(cmd.image_id, 1);
     }
 }
