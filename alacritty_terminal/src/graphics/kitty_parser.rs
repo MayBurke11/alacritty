@@ -285,8 +285,13 @@ pub struct KittyCommand {
     /// Loop count for animation (`v=` in animation control context).
     pub loops: u32,
 
-    /// The raw base64 payload bytes (after `;`).
+    /// The raw base64 payload bytes (after `;`), or pre-decoded raw bytes
+    /// if `pre_decoded` is true (set by chunked transfer finalization).
     pub payload: Vec<u8>,
+
+    /// When true, `payload` contains already-decoded raw bytes (not base64).
+    /// Set by `finalize_chunked` after per-chunk base64 decoding.
+    pub pre_decoded: bool,
 }
 
 impl Default for KittyCommand {
@@ -327,6 +332,7 @@ impl Default for KittyCommand {
             background: 0,
             loops: 0,
             payload: Vec::new(),
+            pre_decoded: false,
         }
     }
 }

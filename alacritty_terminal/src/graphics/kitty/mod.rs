@@ -8,6 +8,7 @@
 //!
 //! See: <https://sw.kovidgoyal.net/kitty/graphics-protocol/>
 
+pub mod animation;
 pub mod decode;
 pub mod placement;
 pub mod response;
@@ -16,10 +17,10 @@ pub mod state;
 use log::{debug, trace};
 
 use crate::event::EventListener;
-use crate::graphics::kitty_parser::{Action, DeleteTarget, KittyCommand};
+use crate::graphics::kitty_parser::{Action, DeleteTarget, KittyCommand, Medium};
 use crate::term::Term;
 
-pub use self::state::{KittyImage, KittyLoadingImage, KittyState};
+pub use self::state::{KittyImage, KittyLoadingImage, KittyPlacement, KittyState};
 
 use self::decode::decode_payload;
 use self::placement::{place_image, resolve_image_id, resolve_or_assign_id};
@@ -66,62 +67,96 @@ pub fn dispatch_command<L: EventListener>(term: &mut Term<L>, cmd: KittyCommand)
         Action::Delete => {
             handle_delete(term, &cmd);
         },
-        // Phase 3: Animation (stub).
         Action::TransmitFrame => {
-            debug!("[kitty] TransmitFrame not yet implemented");
-            send_response(
-                term.event_proxy(),
-                quiet,
-                image_id,
-                &Err("animation frames not yet supported".into()),
+            let result = animation::load_animation_frame(
+                &mut term.graphics.kitty_state,
+                &cmd,
+                &cmd.payload,
             );
+            send_response(term.event_proxy(), quiet, image_id, &result);
         },
         Action::AnimationControl => {
-            debug!("[kitty] AnimationControl not yet implemented");
+            animation::control_animation(&mut term.graphics.kitty_state, &cmd);
         },
         Action::ComposeFrames => {
-            debug!("[kitty] ComposeFrames not yet implemented");
-            send_response(
-                term.event_proxy(),
-                quiet,
-                image_id,
-                &Err("frame composition not yet supported".into()),
-            );
+            let result = animation::compose_frames(&mut term.graphics.kitty_state, &cmd);
+            send_response(term.event_proxy(), quiet, image_id, &result);
         },
     }
 }
 
 // ── Chunked Transfer ───────────────────────────────────────────────────
 
+/// Decode a single chunk's base64 payload into raw bytes.
+///
+/// For `Medium::Direct`, this decodes base64 immediately. For file/shm
+/// mediums the payload is a path, so we pass it through unchanged (it
+/// will only appear in single-shot transfers, not chunked).
+fn decode_chunk_payload(medium: Medium, payload: &[u8]) -> Vec<u8> {
+    if payload.is_empty() {
+        return Vec::new();
+    }
+
+    if medium != Medium::Direct {
+        // File/shm mediums: payload is a base64 path — keep as-is.
+        return payload.to_vec();
+    }
+
+    // Decode this chunk's base64 independently. This handles clients
+    // like chafa that base64-encode each chunk separately (with padding)
+    // rather than splitting one big base64 string across chunks.
+    use base64::Engine;
+    use base64::alphabet;
+    use base64::engine::{GeneralPurpose, GeneralPurposeConfig, DecodePaddingMode};
+
+    const B64: GeneralPurpose = GeneralPurpose::new(
+        &alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+
+    match B64.decode(payload) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            debug!("[kitty] chunk base64 decode error: {e}");
+            Vec::new()
+        },
+    }
+}
+
 /// Start or continue a chunked transfer (m=1).
 fn handle_chunk_start<L: EventListener>(term: &mut Term<L>, cmd: KittyCommand) {
-    let payload = cmd.payload.clone();
+    let decoded = decode_chunk_payload(cmd.medium, &cmd.payload);
 
     match &mut term.graphics.kitty_state.loading {
         Some(loading) => {
-            loading.payload.extend_from_slice(&payload);
+            loading.data.extend_from_slice(&decoded);
             trace!(
-                "[kitty] chunk appended, total payload: {} bytes",
-                loading.payload.len()
+                "[kitty] chunk appended, total decoded: {} bytes",
+                loading.data.len()
             );
         },
         None => {
-            trace!("[kitty] starting chunked transfer, first chunk: {} bytes", payload.len());
+            trace!("[kitty] starting chunked transfer, first chunk: {} decoded bytes", decoded.len());
             term.graphics.kitty_state.loading = Some(KittyLoadingImage {
                 command: cmd,
-                payload,
+                data: decoded,
             });
         },
     }
 }
 
 /// Finalize a chunked transfer by merging the last chunk.
+///
+/// Returns a command whose `payload` contains the fully decoded raw bytes
+/// and whose `pre_decoded` flag is set so `decode_payload` skips base64.
 fn finalize_chunked(mut loading: KittyLoadingImage, final_cmd: KittyCommand) -> KittyCommand {
-    loading.payload.extend_from_slice(&final_cmd.payload);
+    let decoded = decode_chunk_payload(loading.command.medium, &final_cmd.payload);
+    loading.data.extend_from_slice(&decoded);
 
     let mut cmd = loading.command;
-    cmd.payload = loading.payload;
+    cmd.payload = loading.data;
     cmd.more_chunks = false;
+    cmd.pre_decoded = true;
     cmd
 }
 
@@ -197,8 +232,10 @@ fn handle_display<L: EventListener>(
 /// Handle `a=d` (delete).
 fn handle_delete<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) {
     let target = cmd.delete.unwrap_or(DeleteTarget::All);
+    let cursor_col = term.grid().cursor.point.column.0;
+    let cursor_row = term.grid().cursor.point.line.0 as usize;
     debug!("[kitty] delete: {target:?}, image_id={}, image_number={}", cmd.image_id, cmd.image_number);
-    term.graphics.kitty_state.delete(target, cmd);
+    term.graphics.kitty_state.delete(target, cmd, cursor_col, cursor_row);
 }
 
 #[cfg(test)]
@@ -207,7 +244,8 @@ mod tests {
     use crate::graphics::kitty_parser::{Action, Format};
 
     #[test]
-    fn finalize_chunked_merges_payloads() {
+    fn finalize_chunked_merges_decoded_bytes() {
+        // KittyLoadingImage now holds already-decoded bytes (not base64).
         let loading = KittyLoadingImage {
             command: KittyCommand {
                 action: Action::TransmitAndDisplay,
@@ -215,11 +253,16 @@ mod tests {
                 image_id: 5,
                 ..Default::default()
             },
-            payload: b"AAAA".to_vec(),
+            data: vec![0xDE, 0xAD],
         };
 
+        // The final chunk's payload is still base64 — finalize_chunked
+        // decodes it via decode_chunk_payload before appending.
+        use base64::Engine;
+        let final_bytes = vec![0xBE, 0xEF];
+        let final_b64 = base64::engine::general_purpose::STANDARD.encode(&final_bytes);
         let final_cmd = KittyCommand {
-            payload: b"BBBB".to_vec(),
+            payload: final_b64.into_bytes(),
             ..Default::default()
         };
 
@@ -227,7 +270,8 @@ mod tests {
         assert_eq!(merged.action, Action::TransmitAndDisplay);
         assert_eq!(merged.format, Format::Png);
         assert_eq!(merged.image_id, 5);
-        assert_eq!(merged.payload, b"AAAABBBB");
+        assert_eq!(merged.payload, vec![0xDE, 0xAD, 0xBE, 0xEF]);
         assert!(!merged.more_chunks);
+        assert!(merged.pre_decoded);
     }
 }

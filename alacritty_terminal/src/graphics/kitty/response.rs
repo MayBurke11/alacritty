@@ -16,12 +16,23 @@ pub fn error_response(image_id: u32, code: &str, message: &str) -> String {
 }
 
 /// Send a response to the PTY, respecting quiet mode.
+///
+/// Per the kitty spec (and matching kitty's `finish_command_response`):
+/// no response is sent when both image ID and image number are 0
+/// (i.e. the client didn't specify `i=` or `I=`). The caller passes
+/// the resolved ID (which is 0 when neither was set).
 pub fn send_response<L: EventListener>(
     event_proxy: &L,
     quiet: Quiet,
     image_id: u32,
     result: &Result<(), String>,
 ) {
+    // Kitty: "if (g->id || g->image_number) { ... } return NULL;"
+    // No response when the client didn't request one via id/number.
+    if image_id == 0 {
+        return;
+    }
+
     match result {
         Ok(()) => {
             if quiet == Quiet::None {
