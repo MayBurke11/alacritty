@@ -214,11 +214,23 @@ impl TerminalTab {
     }
 
     fn display_title(&self) -> &str {
-        self.custom_title
-            .as_deref()
-            .or(self.terminal_title.as_deref())
-            .unwrap_or(&self.detected_title)
+        displayed_title(
+            self.custom_title.as_deref(),
+            self.terminal_title.as_deref(),
+            &self.detected_title,
+        )
     }
+}
+
+fn displayed_title<'a>(
+    custom_title: Option<&'a str>,
+    terminal_title: Option<&'a str>,
+    detected_title: &'a str,
+) -> &'a str {
+    custom_title
+        .filter(|title| !title.is_empty())
+        .or_else(|| terminal_title.filter(|title| !title.is_empty()))
+        .unwrap_or(detected_title)
 }
 
 struct TabTitleEditor {
@@ -387,9 +399,8 @@ impl WindowContext {
 
         let mut options = WindowOptions::default();
         #[cfg(not(windows))]
-        if let Some(working_directory) = process_cwd(self.active_tab().shell_pid)
-            .filter(|path| path.is_dir())
-            .or_else(|| {
+        if let Some(working_directory) =
+            process_cwd(self.active_tab().shell_pid).filter(|path| path.is_dir()).or_else(|| {
                 foreground_process_path(self.active_tab().master_fd, self.active_tab().shell_pid)
                     .ok()
                     .filter(|path| path.is_dir())
@@ -1091,5 +1102,20 @@ impl Drop for WindowContext {
         for tab in &mut self.tabs {
             let _ = tab.notifier.0.send(Msg::Shutdown);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::displayed_title;
+
+    #[test]
+    fn displayed_title_uses_detected_when_terminal_title_is_empty() {
+        assert_eq!(displayed_title(None, Some(""), "zsh"), "zsh");
+    }
+
+    #[test]
+    fn displayed_title_prefers_custom_title() {
+        assert_eq!(displayed_title(Some("build"), Some("spinner"), "zsh"), "build");
     }
 }

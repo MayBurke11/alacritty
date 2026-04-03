@@ -287,8 +287,10 @@ impl ApplicationHandler<Event> for Processor {
             info!(target: LOG_TARGET_WINIT, "{event:?}");
         }
 
+        let Event { window_id, tab_id, payload } = event;
+
         // Handle events which don't mandate the WindowId.
-        match (event.payload, event.window_id.as_ref()) {
+        match (payload, window_id) {
             // Process IPC config update.
             #[cfg(unix)]
             (EventType::IpcConfig(ipc_config), window_id) => {
@@ -299,7 +301,7 @@ impl ApplicationHandler<Event> for Processor {
                 for (_, window_context) in self
                     .windows
                     .iter_mut()
-                    .filter(|(id, _)| window_id.is_none() || window_id == Some(*id))
+                    .filter(|(id, _)| window_id.is_none() || window_id == Some(**id))
                 {
                     if ipc_config.reset {
                         window_context.reset_window_config(self.config.clone());
@@ -321,7 +323,7 @@ impl ApplicationHandler<Event> for Processor {
             #[cfg(unix)]
             (EventType::IpcGetConfig(stream), window_id) => {
                 // Get the config for the requested window ID.
-                let config = match self.windows.iter().find(|(id, _)| window_id == Some(*id)) {
+                let config = match self.windows.iter().find(|(id, _)| window_id == Some(**id)) {
                     Some((_, window_context)) => window_context.config(),
                     None => &self.global_ipc_options.override_config_rc(self.config.clone()),
                 };
@@ -392,7 +394,7 @@ impl ApplicationHandler<Event> for Processor {
             (EventType::Shutdown, _) => event_loop.exit(),
             // Process events affecting all windows.
             (payload, None) => {
-                let event = WinitEvent::UserEvent(Event::new(payload, None));
+                let event = WinitEvent::UserEvent(Event { window_id: None, tab_id, payload });
                 for window_context in self.windows.values_mut() {
                     window_context.handle_event(
                         #[cfg(target_os = "macos")]
@@ -405,21 +407,21 @@ impl ApplicationHandler<Event> for Processor {
                 }
             },
             (EventType::Terminal(TerminalEvent::Wakeup), Some(window_id)) => {
-                if let Some(window_context) = self.windows.get_mut(window_id) {
-                    window_context.handle_tab_wakeup(event.tab_id);
+                if let Some(window_context) = self.windows.get_mut(&window_id) {
+                    window_context.handle_tab_wakeup(tab_id);
                     if window_context.dirty && window_context.display.window.has_frame {
                         window_context.display.window.request_redraw();
                     }
                 }
             },
             (EventType::Terminal(TerminalEvent::Exit), Some(window_id)) => {
-                let close_window = match self.windows.get_mut(window_id) {
-                    Some(window_context) => window_context.handle_tab_exit(event.tab_id),
+                let close_window = match self.windows.get_mut(&window_id) {
+                    Some(window_context) => window_context.handle_tab_exit(tab_id),
                     None => false,
                 };
 
                 if close_window {
-                    let window_context = match self.windows.entry(*window_id) {
+                    let window_context = match self.windows.entry(window_id) {
                         Entry::Occupied(window_context) => window_context.remove(),
                         Entry::Vacant(_) => return,
                     };
@@ -439,7 +441,7 @@ impl ApplicationHandler<Event> for Processor {
             },
             // NOTE: This event bypasses batching to minimize input latency.
             (EventType::Frame, Some(window_id)) => {
-                if let Some(window_context) = self.windows.get_mut(window_id) {
+                if let Some(window_context) = self.windows.get_mut(&window_id) {
                     window_context.display.window.has_frame = true;
                     if window_context.dirty {
                         window_context.display.window.request_redraw();
@@ -447,14 +449,18 @@ impl ApplicationHandler<Event> for Processor {
                 }
             },
             (payload, Some(window_id)) => {
-                if let Some(window_context) = self.windows.get_mut(window_id) {
+                if let Some(window_context) = self.windows.get_mut(&window_id) {
                     window_context.handle_event(
                         #[cfg(target_os = "macos")]
                         event_loop,
                         &self.proxy,
                         &mut self.clipboard,
                         &mut self.scheduler,
-                        WinitEvent::UserEvent(Event::new(payload, *window_id)),
+                        WinitEvent::UserEvent(Event {
+                            window_id: Some(window_id),
+                            tab_id,
+                            payload,
+                        }),
                     );
                 }
             },
@@ -539,6 +545,10 @@ impl Event {
     ) -> Self {
         Self { window_id: window_id.into(), tab_id: Some(tab_id), payload }
     }
+}
+
+fn normalize_terminal_title(title: String) -> Option<String> {
+    (!title.is_empty()).then_some(title)
 }
 
 impl From<Event> for WinitEvent<Event> {
@@ -1998,12 +2008,15 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 },
                 EventType::Terminal(event) => match event {
                     TerminalEvent::Title(title) => {
-                        *self.ctx.tab_terminal_title = Some(title.clone());
+                        let title = normalize_terminal_title(title);
+                        *self.ctx.tab_terminal_title = title.clone();
                         if self.ctx.is_active_tab
                             && self.ctx.tab_custom_title.is_none()
                             && !self.ctx.preserve_title
                             && self.ctx.config.window.dynamic_title
                         {
+                            let title =
+                                title.unwrap_or_else(|| self.ctx.tab_detected_title.to_owned());
                             self.ctx.window().set_title(title);
                         }
                         *self.ctx.dirty = true;
