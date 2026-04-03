@@ -38,6 +38,21 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
         let text = key.text_with_all_modifiers().unwrap_or_default();
 
+        if self.ctx.window_close_confirmation_active() {
+            match key.logical_key.as_ref() {
+                Key::Named(NamedKey::Enter) => {
+                    self.ctx.confirm_window_close();
+                    return;
+                },
+                Key::Named(NamedKey::Escape) => {
+                    self.ctx.cancel_window_close();
+                    return;
+                },
+                _ if !Self::is_modifier_key(&key) => self.ctx.cancel_window_close(),
+                _ => (),
+            }
+        }
+
         // All key bindings are disabled while a hint is being selected.
         if self.ctx.display().hint_state.active() {
             for character in text.chars() {

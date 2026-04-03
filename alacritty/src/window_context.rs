@@ -46,7 +46,7 @@ use crate::event::{
 };
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
-use crate::message_bar::MessageBuffer;
+use crate::message_bar::{Message, MessageBuffer, MessageType};
 use crate::scheduler::Scheduler;
 use crate::{input, renderer};
 
@@ -238,6 +238,8 @@ struct TabTitleEditor {
     value: String,
 }
 
+pub(crate) const WINDOW_CLOSE_CONFIRMATION_TARGET: &str = "window_close_confirmation";
+
 pub struct WindowContext {
     pub display: Display,
     pub dirty: bool,
@@ -247,6 +249,7 @@ pub struct WindowContext {
     next_tab_id: u64,
     last_active_tab_id: Option<TabId>,
     tab_title_editor: Option<TabTitleEditor>,
+    window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
     mouse: Mouse,
@@ -318,6 +321,67 @@ impl WindowContext {
         if self.tab_title_editor.take().is_some() {
             self.display.pending_update.dirty = true;
             self.dirty = true;
+        }
+    }
+
+    fn window_close_confirmation_message(&self) -> Message {
+        let tab_count = self.tabs.len();
+        let tab_label = if tab_count == 1 { "tab" } else { "tabs" };
+        let mut message = Message::new(
+            format!(
+                "Close window and all {tab_count} {tab_label}? Press Enter or close the window \
+                 again to confirm. Press Escape to cancel."
+            ),
+            MessageType::Warning,
+        );
+        message.set_target(WINDOW_CLOSE_CONFIRMATION_TARGET.to_owned());
+        message
+    }
+
+    fn show_window_close_confirmation(&mut self) {
+        let message = self.window_close_confirmation_message();
+        for tab in &mut self.tabs {
+            tab.message_buffer.remove_target(WINDOW_CLOSE_CONFIRMATION_TARGET);
+            tab.message_buffer.push(message.clone());
+        }
+
+        self.window_close_confirmation_pending = true;
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn cancel_window_close_confirmation(&mut self) {
+        if !self.window_close_confirmation_pending {
+            return;
+        }
+
+        self.window_close_confirmation_pending = false;
+        for tab in &mut self.tabs {
+            tab.message_buffer.remove_target(WINDOW_CLOSE_CONFIRMATION_TARGET);
+        }
+
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn confirm_window_close(&mut self) {
+        self.window_close_confirmation_pending = false;
+        for tab in &mut self.tabs {
+            tab.message_buffer.remove_target(WINDOW_CLOSE_CONFIRMATION_TARGET);
+        }
+
+        self.display.window.hold = false;
+        for tab in &mut self.tabs {
+            tab.terminal.lock().exit();
+        }
+    }
+
+    fn request_window_close(&mut self) {
+        if self.tabs.len() > 1 && !self.window_close_confirmation_pending {
+            self.cancel_tab_title_editor();
+            self.show_window_close_confirmation();
+        } else {
+            self.confirm_window_close();
         }
     }
 
@@ -394,6 +458,8 @@ impl WindowContext {
     }
 
     fn create_tab(&mut self) -> Result<(), Box<dyn Error>> {
+        self.cancel_window_close_confirmation();
+
         let tab_id = TabId(self.next_tab_id);
         self.next_tab_id += 1;
 
@@ -445,6 +511,7 @@ impl WindowContext {
     }
 
     fn close_active_tab(&mut self) {
+        self.cancel_window_close_confirmation();
         let tab = self.active_tab_mut();
         tab.terminal.lock().exit();
     }
@@ -489,6 +556,8 @@ impl WindowContext {
         if self.display.window.hold {
             return false;
         }
+
+        self.cancel_window_close_confirmation();
 
         let Some(index) = self.tab_index(tab_id) else {
             return false;
@@ -677,6 +746,7 @@ impl WindowContext {
             next_tab_id: 1,
             last_active_tab_id: None,
             tab_title_editor: None,
+            window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
         })
@@ -874,10 +944,7 @@ impl WindowContext {
         for event in queued_events {
             match &event {
                 WinitEvent::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                    self.display.window.hold = false;
-                    for tab in &mut self.tabs {
-                        tab.terminal.lock().exit();
-                    }
+                    self.request_window_close();
                     continue;
                 },
                 WinitEvent::WindowEvent { event: WindowEvent::Focused(is_focused), .. } => {
@@ -891,6 +958,8 @@ impl WindowContext {
                             }
                         },
                         TabAction::Close => self.close_active_tab(),
+                        TabAction::ConfirmWindowClose => self.confirm_window_close(),
+                        TabAction::CancelWindowClose => self.cancel_window_close_confirmation(),
                         TabAction::SelectNext => {
                             if !self.tabs.is_empty() {
                                 self.set_active_tab((self.active_tab + 1) % self.tabs.len());

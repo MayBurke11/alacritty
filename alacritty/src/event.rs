@@ -591,6 +591,8 @@ pub struct TabId(pub u64);
 pub enum TabAction {
     Create,
     Close,
+    ConfirmWindowClose,
+    CancelWindowClose,
     SelectNext,
     SelectPrevious,
     Select(usize),
@@ -986,6 +988,27 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
             .send_event(Event::new(EventType::Tab(TabAction::SetTitle), self.display.window.id()));
     }
 
+    fn window_close_confirmation_active(&self) -> bool {
+        self.message_buffer
+            .message()
+            .and_then(|message| message.target())
+            .is_some_and(|target| target == crate::window_context::WINDOW_CLOSE_CONFIRMATION_TARGET)
+    }
+
+    fn confirm_window_close(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ConfirmWindowClose),
+            self.display.window.id(),
+        ));
+    }
+
+    fn cancel_window_close(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::CancelWindowClose),
+            self.display.window.id(),
+        ));
+    }
+
     fn tab_at_mouse(&mut self) -> Option<usize> {
         let mouse = &*self.mouse;
         self.display.tab_at_position(mouse.x, mouse.y)
@@ -1078,7 +1101,14 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
 
     #[inline]
     fn pop_message(&mut self) {
-        if !self.message_buffer.is_empty() {
+        let close_confirmation_active =
+            self.message_buffer.message().and_then(|message| message.target()).is_some_and(
+                |target| target == crate::window_context::WINDOW_CLOSE_CONFIRMATION_TARGET,
+            );
+
+        if close_confirmation_active {
+            self.cancel_window_close();
+        } else if !self.message_buffer.is_empty() {
             self.display.pending_update.dirty = true;
             self.message_buffer.pop();
         }

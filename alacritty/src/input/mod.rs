@@ -108,6 +108,11 @@ pub trait ActionContext<T: EventListener> {
     fn move_tab_forward(&mut self) {}
     fn move_tab_backward(&mut self) {}
     fn set_tab_title(&mut self) {}
+    fn window_close_confirmation_active(&self) -> bool {
+        false
+    }
+    fn confirm_window_close(&mut self) {}
+    fn cancel_window_close(&mut self) {}
     fn tab_at_mouse(&mut self) -> Option<usize> {
         None
     }
