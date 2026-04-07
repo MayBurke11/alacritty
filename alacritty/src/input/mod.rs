@@ -91,6 +91,13 @@ pub trait ActionContext<T: EventListener> {
     fn selection_is_empty(&self) -> bool;
     fn mouse_mut(&mut self) -> &mut Mouse;
     fn mouse(&self) -> &Mouse;
+    fn mouse_point(&self) -> Point {
+        let display_offset = self.terminal().grid().display_offset();
+        let mut point = self.mouse().point(&self.size_info(), display_offset);
+        point.column = min(point.column, self.terminal().last_column());
+        point.line = min(point.line, self.terminal().bottommost_line());
+        point
+    }
     fn touch_purpose(&mut self) -> &mut TouchPurpose;
     fn modifiers(&mut self) -> &mut Modifiers;
     fn scroll(&mut self, _scroll: Scroll) {}
@@ -520,8 +527,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             self.update_selection_scrolling(y);
         }
 
-        let display_offset = self.ctx.terminal().grid().display_offset();
-        let old_point = self.ctx.mouse().point(&size_info, display_offset);
+        let old_point = self.ctx.mouse_point();
 
         let x = x.clamp(0, size_info.width() as i32 - 1) as usize;
         let y = y.clamp(0, size_info.height() as i32 - 1) as usize;
@@ -531,7 +537,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         let inside_text_area = size_info.contains_point(x, y);
         let cell_side = self.cell_side(x);
 
-        let point = self.ctx.mouse().point(&size_info, display_offset);
+        let point = self.ctx.mouse_point();
         let cell_changed = old_point != point;
 
         // If the mouse hasn't changed cells, do nothing.
@@ -597,8 +603,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     fn mouse_report(&mut self, button: u8, state: ElementState) {
-        let display_offset = self.ctx.terminal().grid().display_offset();
-        let point = self.ctx.mouse().point(&self.ctx.size_info(), display_offset);
+        let point = self.ctx.mouse_point();
 
         // Assure the mouse point is not in the scrollback.
         if point.line < 0 {
@@ -705,8 +710,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             };
 
             // Load mouse point, treating message bar and padding as the closest cell.
-            let display_offset = self.ctx.terminal().grid().display_offset();
-            let point = self.ctx.mouse().point(&self.ctx.size_info(), display_offset);
+            let point = self.ctx.mouse_point();
 
             if let MouseButton::Left = button {
                 self.on_left_click(point)
@@ -1147,8 +1151,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             + size.cell_height() as usize * (size.screen_lines() + search_height);
 
         let mouse = self.ctx.mouse();
-        let display_offset = self.ctx.terminal().grid().display_offset();
-        let point = self.ctx.mouse().point(&self.ctx.size_info(), display_offset);
+        let point = self.ctx.mouse_point();
 
         if self.ctx.message().is_none() || (mouse.y <= terminal_end) {
             None
@@ -1163,8 +1166,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
     /// Icon state of the cursor.
     fn cursor_state(&mut self) -> CursorIcon {
-        let display_offset = self.ctx.terminal().grid().display_offset();
-        let point = self.ctx.mouse().point(&self.ctx.size_info(), display_offset);
+        let point = self.ctx.mouse_point();
         let hyperlink = self.ctx.terminal().grid()[point].hyperlink();
 
         if self.ctx.config().tabs.mouse.enabled {
@@ -1236,6 +1238,7 @@ mod tests {
     use winit::window::WindowId;
 
     use alacritty_terminal::event::Event as TerminalEvent;
+    use alacritty_terminal::index::Line;
 
     use crate::config::Binding;
     use crate::message_bar::MessageBuffer;
@@ -1634,5 +1637,31 @@ mod tests {
         triggers: false,
         mode: BindingMode::empty(),
         mods: ModifiersState::ALT | ModifiersState::SUPER,
+    }
+
+    #[test]
+    fn mouse_point_clamps_to_terminal_dimensions() {
+        let mut clipboard = Clipboard::new_nop();
+        let cfg = UiConfig::default();
+        let terminal_size = SizeInfo::new(20.0, 20.0, 10.0, 10.0, 0., 0., false);
+        let display_size = SizeInfo::new(30.0, 30.0, 10.0, 10.0, 0., 0., false);
+
+        let mut terminal = Term::new(cfg.term_options(), &terminal_size, MockEventProxy);
+        let mut mouse = Mouse { x: 29, y: 29, ..Mouse::default() };
+        let mut inline_search_state = InlineSearchState::default();
+        let mut message_buffer = MessageBuffer::default();
+
+        let context = ActionContext {
+            terminal: &mut terminal,
+            mouse: &mut mouse,
+            size_info: &display_size,
+            clipboard: &mut clipboard,
+            modifiers: Default::default(),
+            message_buffer: &mut message_buffer,
+            inline_search_state: &mut inline_search_state,
+            config: &cfg,
+        };
+
+        assert_eq!(super::ActionContext::mouse_point(&context), Point::new(Line(1), Column(1)));
     }
 }

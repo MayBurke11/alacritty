@@ -449,6 +449,7 @@ impl WindowContext {
         let config = self.config.clone();
         self.active_tab_mut().refresh_detected_title(&config);
         self.cancel_tab_title_editor();
+        self.display.clear_hint_highlights();
         self.sync_focus();
         self.refresh_window_title();
         self.display.damage_tracker.frame().mark_fully_damaged();

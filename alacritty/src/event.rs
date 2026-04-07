@@ -772,8 +772,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         } else if self.mouse.left_button_state == ElementState::Pressed
             || self.mouse.right_button_state == ElementState::Pressed
         {
-            let display_offset = self.terminal.grid().display_offset();
-            let point = self.mouse.point(&self.size_info(), display_offset);
+            let point = self.mouse_point();
             self.update_selection(point, self.mouse.cell_side);
         }
 
@@ -1459,8 +1458,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         };
 
         // Load mouse point, treating message bar and padding as the closest cell.
-        let display_offset = self.terminal().grid().display_offset();
-        let point = self.mouse().point(&self.size_info(), display_offset);
+        let point = self.mouse_point();
 
         let cell_side = self.mouse().cell_side;
 

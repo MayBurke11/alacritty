@@ -435,6 +435,11 @@ struct TabHitBox {
     height: i32,
 }
 
+#[inline]
+fn term_dimensions_changed<T, S: TermDimensions>(terminal: &Term<T>, size: &S) -> bool {
+    terminal.screen_lines() != size.screen_lines() || terminal.columns() != size.columns()
+}
+
 impl Display {
     pub fn new(
         window: Window,
@@ -582,6 +587,14 @@ impl Display {
     #[inline]
     pub fn gl_context(&self) -> &PossiblyCurrentContext {
         &self.context
+    }
+
+    pub fn clear_hint_highlights(&mut self) {
+        self.highlighted_hint = None;
+        self.highlighted_hint_age = 0;
+        self.vi_highlighted_hint = None;
+        self.vi_highlighted_hint_age = 0;
+        self.hint_mouse_point = None;
     }
 
     pub fn make_not_current(&mut self) {
@@ -754,9 +767,7 @@ impl Display {
         }
 
         // Resize when terminal when its dimensions have changed.
-        if self.size_info.screen_lines() != new_size.screen_lines
-            || self.size_info.columns() != new_size.columns()
-        {
+        if term_dimensions_changed(terminal, &new_size) {
             // Resize PTY.
             pty_resize_handle.on_resize(new_size.into());
 
@@ -1193,7 +1204,9 @@ impl Display {
         }
 
         // Find highlighted hint at mouse position.
-        let point = mouse.point(&self.size_info, term.grid().display_offset());
+        let mut point = mouse.point(&self.size_info, term.grid().display_offset());
+        point.column = cmp::min(point.column, term.last_column());
+        point.line = cmp::min(point.line, term.bottommost_line());
         let highlighted_hint = hint::highlighted_at(term, config, point, modifiers);
 
         // Update cursor shape.
@@ -2203,4 +2216,28 @@ fn window_size(
     let height = (padding.1).mul_add(2., grid_height).floor();
 
     PhysicalSize::new(width as u32, height as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use alacritty_terminal::grid::Dimensions;
+    use alacritty_terminal::term::test::{TermSize, mock_term};
+
+    use super::term_dimensions_changed;
+
+    #[test]
+    fn stale_terminal_dimensions_require_resize() {
+        let term = mock_term("test");
+        let size = TermSize::new(term.columns() + 1, term.screen_lines());
+
+        assert!(term_dimensions_changed(&term, &size));
+    }
+
+    #[test]
+    fn matching_terminal_dimensions_do_not_require_resize() {
+        let term = mock_term("test");
+        let size = TermSize::new(term.columns(), term.screen_lines());
+
+        assert!(!term_dimensions_changed(&term, &size));
+    }
 }
