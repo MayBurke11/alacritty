@@ -1,2 +1,11 @@
 target
 alacritty-debug.log
+
+# Plan and notes
+
+# Downloaded scripts deps
+scripts/node_modules/
+scripts/bun.lock
+scripts/package.json
+scripts/*.tar.gz
+scripts/ImageMagick-*/
