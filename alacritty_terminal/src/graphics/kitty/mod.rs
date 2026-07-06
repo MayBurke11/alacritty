@@ -53,8 +53,7 @@ pub fn dispatch_command<L: EventListener>(term: &mut Term<L>, cmd: KittyCommand)
         },
         Action::TransmitAndDisplay => {
             let result = handle_transmit_and_display(term, &cmd);
-            let resolved_id =
-                if image_id != 0 { image_id } else { cmd.image_number };
+            let resolved_id = if image_id != 0 { image_id } else { cmd.image_number };
             send_response(term.event_proxy(), quiet, resolved_id, &result);
         },
         Action::Query => {
@@ -68,11 +67,8 @@ pub fn dispatch_command<L: EventListener>(term: &mut Term<L>, cmd: KittyCommand)
             handle_delete(term, &cmd);
         },
         Action::TransmitFrame => {
-            let result = animation::load_animation_frame(
-                &mut term.graphics.kitty_state,
-                &cmd,
-                &cmd.payload,
-            );
+            let result =
+                animation::load_animation_frame(&mut term.graphics.kitty_state, &cmd, &cmd.payload);
             send_response(term.event_proxy(), quiet, image_id, &result);
         },
         Action::AnimationControl => {
@@ -107,7 +103,7 @@ fn decode_chunk_payload(medium: Medium, payload: &[u8]) -> Vec<u8> {
     // rather than splitting one big base64 string across chunks.
     use base64::Engine;
     use base64::alphabet;
-    use base64::engine::{GeneralPurpose, GeneralPurposeConfig, DecodePaddingMode};
+    use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 
     const B64: GeneralPurpose = GeneralPurpose::new(
         &alphabet::STANDARD,
@@ -130,17 +126,15 @@ fn handle_chunk_start<L: EventListener>(term: &mut Term<L>, cmd: KittyCommand) {
     match &mut term.graphics.kitty_state.loading {
         Some(loading) => {
             loading.data.extend_from_slice(&decoded);
-            trace!(
-                "[kitty] chunk appended, total decoded: {} bytes",
-                loading.data.len()
-            );
+            trace!("[kitty] chunk appended, total decoded: {} bytes", loading.data.len());
         },
         None => {
-            trace!("[kitty] starting chunked transfer, first chunk: {} decoded bytes", decoded.len());
-            term.graphics.kitty_state.loading = Some(KittyLoadingImage {
-                command: cmd,
-                data: decoded,
-            });
+            trace!(
+                "[kitty] starting chunked transfer, first chunk: {} decoded bytes",
+                decoded.len()
+            );
+            term.graphics.kitty_state.loading =
+                Some(KittyLoadingImage { command: cmd, data: decoded });
         },
     }
 }
@@ -163,10 +157,7 @@ fn finalize_chunked(mut loading: KittyLoadingImage, final_cmd: KittyCommand) -> 
 // ── Action Handlers ────────────────────────────────────────────────────
 
 /// Handle `a=t` (transmit only, don't display).
-fn handle_transmit<L: EventListener>(
-    term: &mut Term<L>,
-    cmd: &KittyCommand,
-) -> Result<(), String> {
+fn handle_transmit<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) -> Result<(), String> {
     let graphic_data = decode_payload(cmd, &cmd.payload).map_err(|e| e.to_string())?;
     let image_id = resolve_or_assign_id(term, cmd);
     term.graphics.kitty_state.store_image(image_id, graphic_data);
@@ -194,11 +185,8 @@ fn handle_query<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) {
 
     let image_id = if cmd.image_id != 0 { cmd.image_id } else { 1 };
 
-    let result = if cmd.payload.is_empty() {
-        Ok(())
-    } else {
-        decode_payload(cmd, &cmd.payload).map(|_| ())
-    };
+    let result =
+        if cmd.payload.is_empty() { Ok(()) } else { decode_payload(cmd, &cmd.payload).map(|_| ()) };
 
     match result {
         Ok(()) => {
@@ -215,10 +203,7 @@ fn handle_query<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) {
 }
 
 /// Handle `a=p` (display a previously transmitted image).
-fn handle_display<L: EventListener>(
-    term: &mut Term<L>,
-    cmd: &KittyCommand,
-) -> Result<(), String> {
+fn handle_display<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) -> Result<(), String> {
     let image_id = resolve_image_id(&term.graphics.kitty_state, cmd)
         .ok_or_else(|| "image not found".to_string())?;
 
@@ -234,7 +219,10 @@ fn handle_delete<L: EventListener>(term: &mut Term<L>, cmd: &KittyCommand) {
     let target = cmd.delete.unwrap_or(DeleteTarget::All);
     let cursor_col = term.grid().cursor.point.column.0;
     let cursor_row = term.grid().cursor.point.line.0 as usize;
-    debug!("[kitty] delete: {target:?}, image_id={}, image_number={}", cmd.image_id, cmd.image_number);
+    debug!(
+        "[kitty] delete: {target:?}, image_id={}, image_number={}",
+        cmd.image_id, cmd.image_number
+    );
     term.graphics.kitty_state.delete(target, cmd, cursor_col, cursor_row);
 }
 
@@ -261,10 +249,7 @@ mod tests {
         use base64::Engine;
         let final_bytes = vec![0xBE, 0xEF];
         let final_b64 = base64::engine::general_purpose::STANDARD.encode(&final_bytes);
-        let final_cmd = KittyCommand {
-            payload: final_b64.into_bytes(),
-            ..Default::default()
-        };
+        let final_cmd = KittyCommand { payload: final_b64.into_bytes(), ..Default::default() };
 
         let merged = finalize_chunked(loading, final_cmd);
         assert_eq!(merged.action, Action::TransmitAndDisplay);
