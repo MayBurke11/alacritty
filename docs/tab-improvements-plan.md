@@ -25,7 +25,20 @@
 - Return JSON array of `{ id, title, pid, active }`
 - ~15 lines, new `SocketMessage::ListTabs` + reply
 
-## Phase 2: Config Presets (medium)
+## Phase 2: QuickRun (inline command runner)
+
+### `Ctrl+Shift+P` — Run command in new tab
+```toml
+[[keyboard.bindings]]
+key = "p"
+mods = "Control|Shift"
+action = "QuickRun"
+```
+- Opens inline `"run: "` field in footer
+- Same infrastructure as `TabTitleEditor` (keyboard intercept, Enter/Esc)
+- On Enter: `create_tab_with_command("htop")` — new tab with command
+
+## Phase 3: Config Presets (medium)
 
 ### `[[tabs.presets]]` — startup commands
 ```toml
@@ -44,7 +57,7 @@ command = "htop"
 ### Per-tab working directory override
 - `msg create-tab --cwd ~/project`
 
-## Phase 3: Deeper Features (architecture)
+## Phase 4: Deeper Features (architecture)
 
 ### Per-tab config overrides
 - `msg create-tab -o 'colors.primary.background=#000'`
@@ -71,6 +84,7 @@ command = "htop"
 2. `create-tab --no-switch` — background tabs
 3. `list-tabs` — foundation for scripting
 4. `select-tab` / `close-tab` — completes IPC CRUD
-5. `[[tabs.presets]]` — user convenience
-6. Per-tab config overrides — advanced feature
-7. Save/restore — session management
+5. QuickRun (`Ctrl+Shift+P`) — inline `run:` → new tab with command
+6. `[[tabs.presets]]` — startup tabs in config
+7. Per-tab config overrides — dark editor, light shell
+8. Save/restore — session management
