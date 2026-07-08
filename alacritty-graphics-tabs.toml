@@ -206,24 +206,14 @@ mods = "Control|Shift"
 action = "CloseTab"
 
 [[keyboard.bindings]]
-key = "Right"
+key = "ArrowRight"
 mods = "Control|Shift"
 action = "SelectNextTab"
 
 [[keyboard.bindings]]
-key = "Left"
+key = "ArrowLeft"
 mods = "Control|Shift"
 action = "SelectPreviousTab"
-
-[[keyboard.bindings]]
-key = "."
-mods = "Control|Shift"
-action = "MoveTabForward"
-
-[[keyboard.bindings]]
-key = ","
-mods = "Control|Shift"
-action = "MoveTabBackward"
 
 [[keyboard.bindings]]
 key = "t"
@@ -240,25 +230,6 @@ key = "c"
 mods = "Control|Shift"
 action = "Copy"
 
-[[keyboard.bindings]]
-key = "Plus"
-mods = "Control"
-action = "IncreaseFontSize"
-
-[[keyboard.bindings]]
-key = "Minus"
-mods = "Control"
-action = "DecreaseFontSize"
-
-[[keyboard.bindings]]
-key = "0"
-mods = "Control"
-action = "ResetFontSize"
-
-[[keyboard.bindings]]
-key = "Equal"
-mods = "Control"
-action = "IncreaseFontSize"
 
 [debug]
 log_level = "Warn"
@@ -274,7 +245,7 @@ prefer_egl = false
 # ============================================================
 
 [tabs]
-tab_bar_edge = "Bottom"
+tab_bar_edge = "Top"
 tab_bar_style = "Powerline"
 tab_powerline_style = "Angled"
 tab_bar_min_tabs = 2
