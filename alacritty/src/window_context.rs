@@ -94,6 +94,8 @@ struct TerminalTab {
     terminal_title: Option<String>,
     detected_title: String,
     custom_title: Option<String>,
+    /// Cache for hysteresis-based title update — only apply after two consecutive matches.
+    cached_title: Option<String>,
     message_buffer: MessageBuffer,
     cursor_blink_timed_out: bool,
     prev_bell_cmd: Option<Instant>,
@@ -161,6 +163,7 @@ impl TerminalTab {
                 &config.window.identity.title,
             ),
             custom_title: None,
+            cached_title: None,
             cursor_blink_timed_out: false,
             prev_bell_cmd: None,
             inline_search_state: Default::default(),
@@ -197,7 +200,7 @@ impl TerminalTab {
     }
 
     fn refresh_detected_title(&mut self, config: &UiConfig) -> bool {
-        let detected_title = Self::detected_title(
+        let new_title = Self::detected_title(
             #[cfg(not(windows))]
             self.master_fd,
             #[cfg(not(windows))]
@@ -205,11 +208,17 @@ impl TerminalTab {
             &config.window.identity.title,
         );
 
-        if self.detected_title == detected_title {
-            false
-        } else {
-            self.detected_title = detected_title;
-            true
+        // Hysteresis: only apply after two consecutive matches.
+        // Transient processes (ls, cat) never confirm, so they are filtered out.
+        match self.cached_title.take() {
+            Some(cached) if cached == new_title => {
+                self.detected_title = new_title;
+                true
+            },
+            _ => {
+                self.cached_title = Some(new_title);
+                false
+            },
         }
     }
 
