@@ -57,17 +57,20 @@ alacritty msg create-window -e htop
 
 # Открыть с кастомным заголовком
 alacritty msg create-window -T "My Server" -e ssh myserver
-
+```bash
 # Открыть с переопределённым конфигом
 alacritty msg create-window -o 'font.size=14' -o 'window.opacity=0.9'
+
+# Позиционирование и размер окна (через -o)
+alacritty msg create-window \
+  -o 'window.position.x=0' \
+  -o 'window.position.y=0' \
+  -o 'window.dimensions.columns=80' \
+  -o 'window.dimensions.lines=24' \
+  -e htop
 ```
 
-**Позиционирование окна через IPC невозможно.** Позиция задаётся только в статическом конфиге:
-
-```toml
-[window]
-position = { x = 100, y = 200 }
-```
+Позиция и размер задаются через `-o` при создании окна. `window.position` читается на этапе `Window::new()`, поэтому переопределение применяется.
 
 ### 2. `config` — горячее обновление конфига
 
@@ -589,7 +592,7 @@ alacritty msg create-window -T "$PROJECT: logs"   -e bash -c "cd ~/code/$PROJECT
 |---|---|
 | **Только Unix** | IPC сокеты только на Linux/macOS, не на Windows |
 | **JSON, одна строка** | Сообщение должно умещаться в одну строку |
-| **Нет управления окнами** | Нельзя закрыть, переместить, изменить размер окна через IPC |
+| **Нет управления после создания** | Нельзя закрыть или переместить существующее окно. Позиция и размер задаются при создании через `-o` |
 | **Нет ввода** | Нельзя послать клавиши/текст в терминал |
 | **Нет PTY-доступа** | Нельзя читать вывод терминала |
 | **Нет per-window информации** | `get-config` возвращает только конфиг, не состояние окна |
