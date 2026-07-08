@@ -368,20 +368,10 @@ action = "Copy"
 | Action | Описание |
 |---|---|
 | `Hide` | Скрыть окно Alacritty |
-| `HideOtherApplications` | Скрыть все окна кроме Alacritty (macOS) |
 | `Minimize` | Свернуть окно |
 | `Quit` | Выйти из Alacritty |
 | `SpawnNewInstance` | Запустить новый экземпляр Alacritty |
-
-### Навигация по табам
-
-| Action | Описание |
-|---|---|
-| `SelectNextTab` | Следующая вкладка |
-| `SelectPreviousTab` | Предыдущая вкладка |
-| `SelectTab1`–`SelectTab9` | Вкладка по номеру |
-| `SelectLastTab` | Последняя вкладка |
-| `CreateNewTab` | Создать вкладку |
+| `CreateNewWindow` | Создать новое окно в том же процессе |
 
 ### Управление окном/фуллскрином
 
@@ -389,7 +379,6 @@ action = "Copy"
 |---|---|
 | `ToggleFullscreen` | Полноэкранный режим |
 | `ToggleMaximized` | Развернуть на весь экран |
-| `ToggleSimpleFullscreen` | Простой фуллскрин (macOS) |
 
 ### Работа с буфером обмена
 
