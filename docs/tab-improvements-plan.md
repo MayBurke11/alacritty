@@ -88,3 +88,13 @@ command = "htop"
 6. `[[tabs.presets]]` — startup tabs in config
 7. Per-tab config overrides — dark editor, light shell
 8. Save/restore — session management
+
+---
+
+## Known Issues
+
+### Slant style: tabs shift on switch
+- **Symptom:** when switching active tab, all tabs shift a few pixels left
+- **Root cause:** `reserve` in draw_tab_bar depends on `rendered_tab_bg != next_bg` — number of separator cells changes with active tab
+- **Potential fix:** always `reserve = 1` in Slant style (commit 4583dbe8, reverted pending review)
+- **Workaround:** use Separator style with `tab_separator = " "` — reserve is always separator length
