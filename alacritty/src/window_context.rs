@@ -99,7 +99,6 @@ struct TerminalTab {
     prev_bell_cmd: Option<Instant>,
     inline_search_state: InlineSearchState,
     search_state: SearchState,
-    created_at: Instant,
     #[cfg(not(windows))]
     master_fd: RawFd,
     #[cfg(not(windows))]
@@ -147,7 +146,6 @@ impl TerminalTab {
 
         Ok(Self {
             id,
-            created_at: Instant::now(),
             terminal,
             #[cfg(not(windows))]
             master_fd,
@@ -199,11 +197,6 @@ impl TerminalTab {
     }
 
     fn refresh_detected_title(&mut self, config: &UiConfig) -> bool {
-        // Debounce: skip updates for the first 500ms to avoid title flicker on tab startup.
-        if self.created_at.elapsed() < std::time::Duration::from_millis(500) {
-            return false;
-        }
-
         let detected_title = Self::detected_title(
             #[cfg(not(windows))]
             self.master_fd,
