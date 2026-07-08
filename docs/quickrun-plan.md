@@ -1,6 +1,6 @@
 # QuickRun: inline command runner for new tabs
 
-## Goal
+> Branch: `tab-dev` · Tag: `tab-ipc-done`
 
 `Ctrl+Shift+P` → opens inline field `"run: "` in footer → type command → Enter spawns new tab with that command.
 

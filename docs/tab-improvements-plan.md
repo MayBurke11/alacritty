@@ -1,29 +1,29 @@
 # Tab Improvements Plan
 
-> Branch: `graphics-tabs` · Based on pre-tiling-stable + xlab-tabs
+> Branch: `tab-dev` · Based on pre-tiling-stable + xlab-tabs · Tag: `tab-ipc-done`
 
-## Phase 1: IPC Commands (minimal effort, max impact)
+## Phase 0: Stability ✅
 
-### `msg create-tab -e <CMD>`
-- Add `command: Option<Program>` to `create_tab()`
-- `WindowOptions` already supports `TerminalOptions.command`
-- ~3 lines changed in `window_context.rs`
+### Hysteresis tab title ✅
+- `cached_title: Option<String>` in TerminalTab
+- Only apply detected_title after two consecutive matches
+- Filters out ls/cat/echo automatically — no timers, no perf impact
+- Commit: `56b6406f`
 
-### `msg create-tab --no-switch`
-- Add bool flag, skip `set_active_tab()` when set
-- ~2 lines
+## Phase 1: IPC Commands ✅
 
-### `msg close-tab <INDEX>`
-- `self.tabs.remove(index)` + tab switch strategy
-- ~10 lines
+### `msg create-tab -e <CMD>` ✅
+### `msg create-tab --no-switch` ✅
+### `msg list-tabs` ✅ ← JSON `[{index, id, title, active}]`
+### `msg select-tab <INDEX>` ✅
+### `msg close-tab <INDEX>` ✅
 
-### `msg select-tab <INDEX>`
-- `self.set_active_tab(index)` wrapper
-- ~5 lines
-
-### `msg list-tabs`
-- Return JSON array of `{ id, title, pid, active }`
-- ~15 lines, new `SocketMessage::ListTabs` + reply
+- `create_tab_inner(command, wd, no_switch)` — unified creation
+- `TabCreateOptions`, `TabSelect`, `TabTarget` — new CLI types
+- `CreateTabIPC`, `ListTabsIPC`, `SelectTabIPC`, `CloseTabIPC` — event pipeline
+- `SocketReply::ListTabs(String)` — JSON reply over IPC
+- 7/7 E2E IPC tests passing
+- Tag: `tab-ipc-done`
 
 ## Phase 2: QuickRun (inline command runner)
 
