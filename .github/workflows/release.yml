@@ -35,8 +35,9 @@ jobs:
           scdoc < extra/man/alacritty-escapes.7.scd | gzip -c > "./alacritty-escapes.7.gz"
       - name: Upload Assets
         run: |
-          binpath="alacritty-linux-$(uname -m).gz"
-          gzip -9 --stdout target/release/alacritty > "$binpath"
+          binpath="alacritty-linux-x86_64"
+          cp target/release/alacritty "$binpath"
+          chmod +x "$binpath"
 
           mv ./extra/logo/alacritty-term.svg ./Alacritty.svg
 
