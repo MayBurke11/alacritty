@@ -1556,8 +1556,7 @@ impl Display {
                     })
                     .unwrap_or(visible_bar_bg);
                 let needs_separator = rendered_tab_bg != next_bg;
-                // Always reserve separator space to prevent layout shifts on tab switch.
-                let reserve = 1usize;
+                let reserve = usize::from(needs_separator);
                 let visible: String = StrShortener::new(
                     &format!(" {title} "),
                     num_cols.saturating_sub(column + reserve),
@@ -1635,7 +1634,7 @@ impl Display {
                         }
                     })
                     .unwrap_or(visible_bar_bg);
-                let reserve = 1usize;
+                let reserve = usize::from(rendered_tab_bg != next_bg);
                 let visible: String = StrShortener::new(
                     &format!(" {title} "),
                     num_cols.saturating_sub(column + reserve),
