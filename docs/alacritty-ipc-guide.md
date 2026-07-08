@@ -132,6 +132,38 @@ alacritty msg create-window -e htop
 
 В daemon-режиме event loop **не выходит** при закрытии последнего окна — процесс живёт, пока его не убьют.
 
+### `--hold`
+
+```bash
+alacritty --hold -e <CMD>
+```
+
+**Не закрывает окно** после завершения дочернего процесса. Вместо этого:
+- Терминал остаётся открытым с содержимым, которое вывела команда
+- В статус-баре появляется надпись `"Process finished (Hold)"` или аналогичная
+- Любое нажатие клавиши или `Ctrl+C` закрывает окно (сбрасывает `hold = false`)
+
+```bash
+# Посмотреть вывод команды перед закрытием
+alacritty --hold -e ls -la /tmp
+
+# Отладка: увидеть ошибку компиляции
+alacritty --hold -e cargo build
+
+# Через IPC
+alacritty msg create-window --hold -e systemctl status nginx
+```
+
+**Как работает внутри:**
+1. `--hold` устанавливает `drain_on_exit = true` в PTY-конфиге
+2. При выходе процесса alacritty не удаляет окно, а ставит `window.hold = true`
+3. При первом же пользовательском вводе `window.hold = false` и окно закрывается
+
+**Зачем:**
+- Увидеть вывод команды, которая завершается быстро (ошибка, `--help`, diff)
+- Отладка: просмотр логов без `| less`
+- Запуск утилит без оборачивания в `bash -c "...; read"` или `sleep`
+
 ### `-e`, `--command`
 
 ```bash
@@ -145,6 +177,188 @@ alacritty -e bash -c "echo hello && sleep 5"
 alacritty -e nvim
 alacritty -e ssh user@host
 ```
+
+---
+
+## Systemd-сервис для `alacritty --daemon`
+
+### Вариант 1: `systemctl --user` (рекомендуемый)
+
+Поднимается в рамках сессии пользователя, имеет доступ к `$DISPLAY`/`$WAYLAND_DISPLAY`.
+
+```ini
+# ~/.config/systemd/user/alacritty-daemon.service
+[Unit]
+Description=Alacritty terminal daemon
+Documentation=https://github.com/alacritty/alacritty
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/alacritty --daemon
+ExecStopPost=-/usr/bin/rm -f %t/alacritty/Alacritty-*.sock
+Restart=on-failure
+RestartSec=2
+
+# Доступ к X11/Wayland и сокету
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+
+# Ограничения безопасности (опционально)
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t
+
+[Install]
+WantedBy=graphical-session.target
+```
+
+```bash
+# Включить и запустить
+systemctl --user daemon-reload
+systemctl --user enable --now alacritty-daemon.service
+
+# Статус
+systemctl --user status alacritty-daemon
+
+# Логи
+journalctl --user -u alacritty-daemon -f
+
+# Перезапустить
+systemctl --user restart alacritty-daemon
+```
+
+**Загрузка `ALACRITTY_SOCKET` в shell:**
+
+```bash
+# В ~/.bashrc или ~/.profile
+export ALACRITTY_SOCKET=$(ls $XDG_RUNTIME_DIR/alacritty/Alacritty-*.sock 2>/dev/null | head -1)
+```
+
+### Вариант 2: Системный сервис (для multiuser)
+
+Для серверов без графической сессии — только как headless-daemon, принимающий команды через IPC.
+
+```ini
+# /etc/systemd/system/alacritty-daemon.service
+[Unit]
+Description=Alacritty terminal daemon (system-wide)
+After=network.target
+
+[Service]
+Type=simple
+User=alacritty
+Group=alacritty
+ExecStart=/usr/bin/alacritty --daemon
+ExecStopPost=-/usr/bin/rm -f %t/alacritty/Alacritty-*.sock
+
+# Без GUI — только сокет
+Environment=DISPLAY=
+Environment=WAYLAND_DISPLAY=
+
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=%t
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Проблема:** системный сервис не имеет доступа к графической сессии. Окна создаются, но не могут подключиться к X11/Wayland. Решение — через `systemctl --user import-environment` или через `systemd-x11-autolaunch`.
+
+### Вариант 3: `xinit`/`.xprofile` (без systemd)
+
+```bash
+# В ~/.xinitrc или ~/.xprofile
+alacritty --daemon &
+export ALACRITTY_SOCKET=$(ls $XDG_RUNTIME_DIR/alacritty/Alacritty-*.sock 2>/dev/null | head -1)
+```
+
+---
+
+## Переход на `alacritty --daemon`
+
+### Текущий подход (без daemon)
+
+```
+$ alacritty              # процесс живёт пока открыто окно
+$ alacritty -e nvim      # отдельный процесс на каждое окно
+```
+
+Каждый вызов `alacritty` создаёт новый процесс с собственным event loop, рендерером, конфигом. Закрытие окна = смерть процесса.
+
+### Daemon-подход
+
+```
+$ alacritty --daemon &   # один процесс-сервер (0 окон)
+$ alacritty msg create-window           # +окно в том же процессе
+$ alacritty msg create-window -e nvim   # +окно в том же процессе
+```
+
+Один процесс управляет всеми окнами. Окна создаются/закрываются, процесс живёт.
+
+### Миграция (пошагово)
+
+**Шаг 1: Автозапуск daemon**
+
+```bash
+# systemd (рекомендуется)
+systemctl --user enable --now alacritty-daemon.service
+
+# Или в shell rc
+if ! pgrep -u "$USER" -f "alacritty --daemon" > /dev/null; then
+    alacritty --daemon &
+    sleep 0.3
+fi
+```
+
+**Шаг 2: Переменная окружения**
+
+```bash
+# В ~/.bashrc
+export ALACRITTY_SOCKET=$(ls $XDG_RUNTIME_DIR/alacritty/Alacritty-*.sock 2>/dev/null | head -1)
+```
+
+**Шаг 3: Алиасы для открытия окон**
+
+```bash
+alias alt='alacritty msg create-window'
+alias alt-edit='alacritty msg create-window -e nvim'
+alias alt-run='alacritty msg create-window --hold -e'
+```
+
+**Шаг 4: Замена лаунчера**
+
+Вместо ярлыка `alacritty` в панели/rofi/dmenu — ярлык `alacritty msg create-window`.
+
+### Плюсы и минусы
+
+| Плюсы | Минусы |
+|---|---|
+| **Экономия памяти:** все окна делят общий event loop, рендерер и кэш глифов. ~30 MB на первое окно, +15 MB на каждое следующее (против ~80 MB каждое отдельно) | **Single point of failure:** креш daemon = потеря всех окон. Нестабильный GPU-драйвер или баг в рендерере роняет всё |
+| **Быстрый запуск:** `msg create-window` мгновенный — не нужно инициализировать шрифты, конфиг, OpenGL | **Нет изоляции:** все окна в одном процессе. Нельзя задать разный `--config-file` для разных окон (только `-o` поверх) |
+| **Горячее обновление:** `msg config` применяется ко всем окнам сразу. Поменял тему → во всех окнах мгновенно | **Запуск daemon:** нужно помнить запустить daemon до окон. Если daemon упал, все окна пропали |
+| **IPC-управление:** можно управлять окнами из скриптов, systemd-таймеров, других программ | **Непривычно:** `alacritty` в терминале больше не открывает окно — нужно переучиться на `alacritty msg create-window` |
+| **Daemon не умирает при закрытии окон:** можно закрыть все окна и позже открыть новые без перезапуска | **Память daemon:** фоновый процесс потребляет ~20-30 MB даже с нулём окон (event loop + шрифты в idle) |
+
+**Когда стоит переходить:**
+- Вы открываете много окон Alacritty (4+)
+- Используете скрипты/автоматизацию для запуска терминалов
+- Часто меняете темы/шрифты и хотите мгновенного применения
+- У вас ограниченная память (старые ноутбуки, VPS)
+
+**Когда не стоит:**
+- Вы открываете 1-2 окна и этого достаточно
+- Используете Wayland с багами (winit на Wayland + daemon может вести себя нестабильно)
+- Вам нужна изоляция: разный `--config-file` для разных проектов
+- Вы часто экспериментируете с конфигом (креш одного тестового конфига уронит все окна)
 
 ---
 
