@@ -446,6 +446,7 @@ impl WindowContext {
 
         self.last_active_tab_id = Some(self.tabs[self.active_tab].id);
         self.active_tab = index;
+        info!("[tabs] switch to tab {} (of {})", index + 1, self.tabs.len());
         let config = self.config.clone();
         self.active_tab_mut().refresh_detected_title(&config);
         self.cancel_tab_title_editor();
@@ -502,6 +503,7 @@ impl WindowContext {
         };
 
         self.tabs.push(tab);
+        info!("[tabs] created tab {}, total={}", tab_id.0, self.tabs.len());
         self.set_active_tab(self.tabs.len() - 1);
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
@@ -576,6 +578,7 @@ impl WindowContext {
         };
 
         self.tabs.remove(index);
+        info!("[tabs] closed tab, remaining={}", self.tabs.len());
         if self.tab_title_editor.as_ref().is_some_and(|editor| editor.tab_id == closing_tab_id) {
             self.tab_title_editor = None;
         }
