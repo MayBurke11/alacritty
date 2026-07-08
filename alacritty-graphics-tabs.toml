@@ -1,0 +1,296 @@
+# Alacritty Configuration
+# Version: v0.18.0-dev with Sixel + Kitty graphics + Tabs
+# Branch: graphics-tabs
+
+[general]
+import = []
+# working_directory = "/home/user"
+live_config_reload = true
+ipc_socket = true
+
+[env]
+# TERM = "alacritty"
+
+[window]
+opacity = 1.0
+blur = false
+dynamic_title = true
+dynamic_padding = false
+resize_increments = false
+startup_mode = "Windowed"
+decorations = "Full"
+# decorations_theme_variant = "Dark"
+level = "Normal"
+option_as_alt = "None"
+
+[window.position]
+# x = 0
+# y = 0
+
+[window.dimensions]
+columns = 0
+lines = 0
+
+[window.padding]
+x = 0
+y = 0
+
+[window.identity]
+title = "Alacritty"
+
+[window.identity.class]
+general = "Alacritty"
+instance = "Alacritty"
+
+[scrolling]
+history = 10000
+multiplier = 3
+
+[font]
+size = 11.25
+builtin_box_drawing = true
+
+[font.normal]
+family = "monospace"
+# style = "Regular"
+
+# [font.bold]
+# family = "monospace"
+# style = "Bold"
+
+# [font.italic]
+# family = "monospace"
+# style = "Italic"
+
+# [font.bold_italic]
+# family = "monospace"
+# style = "Bold Italic"
+
+[font.offset]
+x = 0
+y = 0
+
+[font.glyph_offset]
+x = 0
+y = 0
+
+[colors]
+transparent_background_colors = false
+draw_bold_text_with_bright_colors = false
+
+[colors.primary]
+foreground = "#d8d8d8"
+background = "#181818"
+# bright_foreground = "#ffffff"
+# dim_foreground = "#888888"
+
+[colors.normal]
+black   = "#181818"
+red     = "#ac4242"
+green   = "#90a959"
+yellow  = "#f4bf75"
+blue    = "#6a9fb5"
+magenta = "#aa759f"
+cyan    = "#75b5aa"
+white   = "#d8d8d8"
+
+[colors.bright]
+black   = "#6b6b6b"
+red     = "#c55555"
+green   = "#aac474"
+yellow  = "#feca88"
+blue    = "#82b8c8"
+magenta = "#c28cb8"
+cyan    = "#93d3c3"
+white   = "#f8f8f8"
+
+# [colors.dim]
+# black   = "#0f0f0f"
+# red     = "#712b2b"
+# green   = "#5f6f3a"
+# yellow  = "#a17e4d"
+# blue    = "#456877"
+# magenta = "#704d68"
+# cyan    = "#4d7770"
+# white   = "#8e8e8e"
+
+[colors.cursor]
+text = "CellBackground"
+cursor = "CellForeground"
+
+[colors.vi_mode_cursor]
+text = "CellBackground"
+cursor = "CellForeground"
+
+[colors.selection]
+text = "CellBackground"
+cursor = "CellForeground"
+
+[colors.search.matches]
+foreground = "#181818"
+background = "#ac4242"
+
+[colors.search.focused_match]
+foreground = "#181818"
+background = "#f4bf75"
+
+# [colors.line_indicator]
+# foreground = "#ffffff"
+# background = "#000000"
+
+[colors.hints.start]
+foreground = "#181818"
+background = "#f4bf75"
+
+[colors.hints.end]
+foreground = "#181818"
+background = "#ac4242"
+
+# [colors.footer_bar]
+# foreground = "#d8d8d8"
+# background = "#181818"
+
+# [[colors.indexed_colors]]
+# index = 16
+# color = "#000000"
+
+[bell]
+animation = "Linear"
+color = "#ffffff"
+duration = 0
+# command = "notify-send"
+# command = { program = "notify-send", args = ["Alacritty", "Bell!"] }
+
+[selection]
+semantic_escape_chars = ",│`|:\"' ()[]{}<>\t"
+save_to_clipboard = false
+
+[cursor]
+style = "Block"
+# style = { shape = "Block", blinking = "On" }
+# vi_mode_style = "Underline"
+# vi_mode_style = { shape = "Underline", blinking = "On" }
+unfocused_hollow = false
+thickness = 0.15
+blink_interval = 750
+blink_timeout = 5
+
+[terminal]
+shell = { program = "/usr/bin/fish", args = ["-l"] }
+osc52 = "OnlyCopy"
+
+[mouse]
+hide_when_typing = false
+
+# [[mouse.bindings]]
+# mouse = "Right"
+# mods = "Control"
+# action = "ExpandSelection"
+
+[hints]
+# alphabet = "asdfghjklqwertyuiopzxcvbnm"
+
+# [[hints.enabled]]
+# regex = "(https?://|git@)[^\u0000-\u001F\u007F-\u009F<>\"\\s{-}\\^⟨⟩`]+"
+# binding = { key = "u", mods = "Control|Shift" }
+# action = "Copy"
+
+[[keyboard.bindings]]
+key = "t"
+mods = "Control|Shift"
+action = "CreateNewTab"
+
+[[keyboard.bindings]]
+key = "w"
+mods = "Control|Shift"
+action = "CloseTab"
+
+[[keyboard.bindings]]
+key = "Right"
+mods = "Control|Shift"
+action = "SelectNextTab"
+
+[[keyboard.bindings]]
+key = "Left"
+mods = "Control|Shift"
+action = "SelectPreviousTab"
+
+[[keyboard.bindings]]
+key = "."
+mods = "Control|Shift"
+action = "MoveTabForward"
+
+[[keyboard.bindings]]
+key = ","
+mods = "Control|Shift"
+action = "MoveTabBackward"
+
+[[keyboard.bindings]]
+key = "t"
+mods = "Control|Shift|Alt"
+action = "SetTabTitle"
+
+[[keyboard.bindings]]
+key = "v"
+mods = "Control|Shift"
+action = "Paste"
+
+[[keyboard.bindings]]
+key = "c"
+mods = "Control|Shift"
+action = "Copy"
+
+[[keyboard.bindings]]
+key = "Plus"
+mods = "Control"
+action = "IncreaseFontSize"
+
+[[keyboard.bindings]]
+key = "Minus"
+mods = "Control"
+action = "DecreaseFontSize"
+
+[[keyboard.bindings]]
+key = "0"
+mods = "Control"
+action = "ResetFontSize"
+
+[[keyboard.bindings]]
+key = "Equal"
+mods = "Control"
+action = "IncreaseFontSize"
+
+[debug]
+log_level = "Warn"
+print_events = false
+persistent_logging = false
+render_timer = false
+highlight_damage = false
+prefer_egl = false
+# renderer = "Glsl3"
+
+# ============================================================
+# Tabs configuration (xlab-tabs fork)
+# ============================================================
+
+[tabs]
+tab_bar_edge = "Bottom"
+tab_bar_style = "Powerline"
+tab_powerline_style = "Angled"
+tab_bar_min_tabs = 2
+tab_switch_strategy = "Previous"
+tab_separator = " | "
+tab_title_template = "{title}"
+# active_tab_title_template = "{index}: {title}"
+tab_title_max_length = 0
+# active_tab_foreground = "#ffffff"
+# active_tab_background = "#444444"
+active_tab_font_style = "Normal"
+# inactive_tab_foreground = "#888888"
+# inactive_tab_background = "#222222"
+inactive_tab_font_style = "Normal"
+# tab_bar_background = "#111111"
+
+[tabs.mouse]
+enabled = true
+hover = true
