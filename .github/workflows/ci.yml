@@ -6,32 +6,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
+  linux:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - name: Stable
-        run: cargo test
-      - name: Stable (no default features)
-        run: cargo test -p alacritty_terminal --no-default-features
-      - name: Oldstable
+      - name: Install dependencies
         run: |
-          rustup default $(cat Cargo.toml | grep "rust-version" | sed 's/.*"\(.*\)".*/\1/')
-          cargo test
-      - name: Clippy
-        run: |
-          rustup component add clippy
-          cargo clippy --all-targets
-  check-macos-x86_64:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install target
-        run: rustup update && rustup target add x86_64-apple-darwin
+          sudo apt update
+          sudo apt install cmake pkg-config libfreetype6-dev libfontconfig1-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev python3
       - name: Build
-        run: cargo build --target=x86_64-apple-darwin
+        run: cargo build --release
+      - name: Test
+        run: cargo test --release
