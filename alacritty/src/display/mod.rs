@@ -1556,7 +1556,9 @@ impl Display {
                     })
                     .unwrap_or(visible_bar_bg);
                 let needs_separator = rendered_tab_bg != next_bg;
-                let reserve = usize::from(needs_separator);
+                // Always reserve space to prevent layout shifts, but fill gap
+                // with tab color when no separator is drawn.
+                let reserve = 1usize;
                 let visible: String = StrShortener::new(
                     &format!(" {title} "),
                     num_cols.saturating_sub(column + reserve),
@@ -1593,6 +1595,17 @@ impl Display {
                         rendered_tab_bg,
                         next_bg,
                     );
+                } else {
+                    // Fill the gap with the tab's own color to prevent bar_bg bleeding through.
+                    let gap_x = body_x + body_width;
+                    rects.push(RenderRect::new(
+                        gap_x,
+                        y as f32,
+                        size_info.cell_width(),
+                        height as f32,
+                        rendered_tab_bg,
+                        1.0,
+                    ));
                 }
 
                 self.tab_hit_boxes.push(TabHitBox {
@@ -1634,7 +1647,7 @@ impl Display {
                         }
                     })
                     .unwrap_or(visible_bar_bg);
-                let reserve = usize::from(rendered_tab_bg != next_bg);
+                let reserve = 1usize;
                 let visible: String = StrShortener::new(
                     &format!(" {title} "),
                     num_cols.saturating_sub(column + reserve),
