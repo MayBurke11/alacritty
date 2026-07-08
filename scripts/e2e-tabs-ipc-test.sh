@@ -49,12 +49,15 @@ ALACRITTY_PID=$!
 CAPTURE_PID=$!
 
 echo "[2] Waiting for IPC socket..."
-for i in $(seq 1 30); do
-  SOCKET=$(ls $XDG_RUNTIME_DIR/alacritty/Alacritty-*.sock 2>/dev/null | head -1)
-  [ -n "$SOCKET" ] && break
+SOCKET=""
+for i in $(seq 1 40); do
+  # Socket is directly in $XDG_RUNTIME_DIR, using prefix "Alacritty-<display>-"
+  for f in $XDG_RUNTIME_DIR/Alacritty-*.sock /tmp/Alacritty-*.sock; do
+    [ -S "$f" ] && SOCKET="$f" && break 2
+  done
   sleep 0.25
 done
-[ -z "$SOCKET" ] && { red "ERROR: socket not found"; exit 1; }
+[ -z "$SOCKET" ] && { red "ERROR: socket not found in $XDG_RUNTIME_DIR"; exit 1; }
 green "  Socket found: $SOCKET"
 SOCKET_ARG="-s $SOCKET"
 
@@ -90,9 +93,9 @@ OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1)
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print('ok' if len(tabs)==3 else f'got {len(tabs)} tabs')" 2>/dev/null || echo "parse_err")
 assert_ok "list-tabs returns 3 tabs" "$RESULT"
 
-echo "[8] Verify active tab is still #1 (no-switch worked)"
-RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); active=[t['index'] for t in tabs if t['active']]; print('ok' if active and active[0]==1 else f'active={active}')" 2>/dev/null || echo "parse_err")
-assert_ok "active tab unchanged after --no-switch" "$RESULT"
+echo "[8] Verify active tab is still #2 (no-switch worked — stayed on htop)"
+RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); active=[t['index'] for t in tabs if t['active']]; print('ok' if active and active[0]==2 else f'active={active}')" 2>/dev/null || echo "parse_err")
+assert_ok "active tab stayed on #2 after --no-switch" "$RESULT"
 
 # ====== Test 4: select-tab ======
 echo ""
