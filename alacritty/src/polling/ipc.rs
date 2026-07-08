@@ -85,6 +85,22 @@ impl IpcListener {
                 let event = Event::new(EventType::IpcGetConfig(Arc::new(stream)), window_id);
                 let _ = self.event_proxy.send_event(event);
             },
+            SocketMessage::CreateTab(options) => {
+                let event = Event::new(EventType::CreateTabIPC(options), None);
+                let _ = self.event_proxy.send_event(event);
+            },
+            SocketMessage::ListTabs(_options) => {
+                let event = Event::new(EventType::ListTabsIPC(Arc::new(stream)), None);
+                let _ = self.event_proxy.send_event(event);
+            },
+            SocketMessage::SelectTab(options) => {
+                let event = Event::new(EventType::SelectTabIPC(options.index), None);
+                let _ = self.event_proxy.send_event(event);
+            },
+            SocketMessage::CloseTab(options) => {
+                let event = Event::new(EventType::CloseTabIPC(options.index), None);
+                let _ = self.event_proxy.send_event(event);
+            },
         }
 
         Ok(())
@@ -127,6 +143,11 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
         // Write requested config to STDOUT.
         (SocketMessage::GetConfig(..), SocketReply::GetConfig(config)) => {
             println!("{config}");
+            Ok(())
+        },
+        // Write tab list to STDOUT.
+        (SocketMessage::ListTabs(..), SocketReply::ListTabs(tabs)) => {
+            println!("{tabs}");
             Ok(())
         },
         // Ignore requests without reply.
@@ -235,4 +256,5 @@ pub fn socket_prefix() -> String {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SocketReply {
     GetConfig(String),
+    ListTabs(String),
 }

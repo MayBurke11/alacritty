@@ -469,22 +469,53 @@ impl WindowContext {
     }
 
     fn create_tab(&mut self) -> Result<(), Box<dyn Error>> {
+        self.create_tab_inner(None, None, false)
+    }
+
+    /// Create a new tab via IPC with optional command, working directory, and no-switch flag.
+    pub fn create_tab_ipc(&mut self, options: crate::cli::TabCreateOptions) {
+        let cmd = (!options.command.is_empty()).then(|| options.command.clone());
+        let cwd = options.working_directory.clone();
+        let no_switch = options.no_switch;
+        if let Err(err) = self.create_tab_inner(cmd, cwd, no_switch) {
+            log::warn!("Failed to create tab via IPC: {err:?}");
+        }
+    }
+
+    fn create_tab_inner(
+        &mut self,
+        command: Option<Vec<String>>,
+        working_directory: Option<PathBuf>,
+        no_switch: bool,
+    ) -> Result<(), Box<dyn Error>> {
         self.cancel_window_close_confirmation();
 
         let tab_id = TabId(self.next_tab_id);
         self.next_tab_id += 1;
 
         let mut options = WindowOptions::default();
-        #[cfg(not(windows))]
-        if let Some(working_directory) =
-            process_cwd(self.active_tab().shell_pid).filter(|path| path.is_dir()).or_else(|| {
-                foreground_process_path(self.active_tab().master_fd, self.active_tab().shell_pid)
-                    .ok()
-                    .filter(|path| path.is_dir())
-            })
-        {
-            options.terminal_options.working_directory = Some(working_directory);
+
+        // IPC-provided working directory takes priority over inheritance.
+        if let Some(ref wd) = working_directory {
+            options.terminal_options.working_directory = Some(wd.clone());
+        } else {
+            #[cfg(not(windows))]
+            if let Some(wd) =
+                process_cwd(self.active_tab().shell_pid).filter(|path| path.is_dir()).or_else(|| {
+                    foreground_process_path(self.active_tab().master_fd, self.active_tab().shell_pid)
+                        .ok()
+                        .filter(|path| path.is_dir())
+                })
+            {
+                options.terminal_options.working_directory = Some(wd);
+            }
         }
+
+        // IPC-provided command.
+        if let Some(cmd) = command {
+            options.terminal_options.command = cmd;
+        }
+
         let tab = match TerminalTab::new(
             tab_id,
             self.display.window.id(),
@@ -513,13 +544,53 @@ impl WindowContext {
 
         self.tabs.push(tab);
         info!("[tabs] created tab {}, total={}", tab_id.0, self.tabs.len());
-        self.set_active_tab(self.tabs.len() - 1);
+        if !no_switch {
+            self.set_active_tab(self.tabs.len() - 1);
+        }
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
         self.display.pending_update.dirty = true;
         self.dirty = true;
 
         Ok(())
+    }
+
+    /// Close a tab by index via IPC.
+    pub fn close_tab_at(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        self.cancel_window_close_confirmation();
+        self.tabs[index].terminal.lock().exit();
+    }
+
+    /// Select a tab by index via IPC.
+    pub fn select_tab_at(&mut self, index: usize) {
+        self.set_active_tab(index);
+    }
+
+    /// Return JSON string with all tabs' info.
+    pub fn tabs_info_json(&self) -> String {
+        use serde::Serialize;
+        #[derive(Serialize)]
+        struct TabInfo {
+            index: usize,
+            id: u64,
+            title: String,
+            active: bool,
+        }
+        let tabs: Vec<TabInfo> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, tab)| TabInfo {
+                index: i + 1,
+                id: tab.id.0,
+                title: tab.display_title().to_owned(),
+                active: i == self.active_tab,
+            })
+            .collect();
+        serde_json::to_string(&tabs).unwrap_or_default()
     }
 
     fn close_active_tab(&mut self) {

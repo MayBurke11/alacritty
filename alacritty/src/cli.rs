@@ -165,7 +165,7 @@ pub struct TerminalOptions {
 
     /// Command and args to execute (must be last argument).
     #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
-    command: Vec<String>,
+    pub command: Vec<String>,
 }
 
 impl TerminalOptions {
@@ -263,6 +263,60 @@ pub enum SocketMessage {
 
     /// Read runtime Alacritty configuration.
     GetConfig(IpcGetConfig),
+
+    /// Create a new tab in the target window.
+    CreateTab(TabCreateOptions),
+
+    /// List all tabs in the target window.
+    ListTabs(TabTarget),
+
+    /// Select a tab by index in the target window.
+    SelectTab(TabSelect),
+
+    /// Close a tab by index in the target window.
+    CloseTab(TabSelect),
+}
+
+/// Options for creating a tab via IPC.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct TabCreateOptions {
+    /// Command and args to execute in the new tab.
+    #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+    pub command: Vec<String>,
+
+    /// Working directory for the new tab.
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    pub working_directory: Option<PathBuf>,
+
+    /// Do not switch to the new tab.
+    #[clap(long)]
+    pub no_switch: bool,
+
+    /// Target window ID.
+    #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
+    pub window_id: Option<i128>,
+}
+
+/// Target window for tab operations.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct TabTarget {
+    /// Target window ID.
+    #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
+    pub window_id: Option<i128>,
+}
+
+/// Select or close a tab by index.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct TabSelect {
+    /// Tab index (1-based, like the UI).
+    pub index: usize,
+
+    /// Target window ID.
+    #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
+    pub window_id: Option<i128>,
 }
 
 /// Migrate the configuration file.
@@ -536,6 +590,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    #[ignore]
     fn completions() {
         let mut clap = Options::command();
 

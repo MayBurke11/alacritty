@@ -45,7 +45,7 @@ use alacritty_terminal::term::{self, ClipboardType, Term, TermMode};
 use alacritty_terminal::vte::ansi::NamedColor;
 
 #[cfg(unix)]
-use crate::cli::{IpcConfig, ParsedOptions};
+use crate::cli::{IpcConfig, ParsedOptions, TabCreateOptions};
 use crate::cli::{Options as CliOptions, WindowOptions};
 use crate::clipboard::Clipboard;
 use crate::config::ui_config::{HintAction, HintInternalAction};
@@ -389,6 +389,43 @@ impl ApplicationHandler<Event> for Processor {
                     error!("Could not open window: {err:?}");
                 }
             },
+            // Process tab IPC events.
+            #[cfg(unix)]
+            (EventType::CreateTabIPC(options), _) => {
+                let target = options.window_id
+                    .and_then(|id| u64::try_from(id).ok())
+                    .map(WindowId::from);
+                for (_id, window_context) in self.windows.iter_mut()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
+                {
+                    window_context.create_tab_ipc(options.clone());
+                    if target.is_some() { break; }
+                }
+            },
+            #[cfg(unix)]
+            (EventType::ListTabsIPC(stream), _) => {
+                let tab_info = self.windows.values()
+                    .next()
+                    .map(|w| w.tabs_info_json())
+                    .unwrap_or_default();
+                if let Ok(mut s) = stream.try_clone() {
+                    ipc::send_reply(&mut s, SocketReply::ListTabs(tab_info));
+                }
+            },
+            #[cfg(unix)]
+            (EventType::SelectTabIPC(index), _) => {
+                for window_context in self.windows.values_mut() {
+                    window_context.select_tab_at(index.saturating_sub(1));
+                    break;
+                }
+            },
+            #[cfg(unix)]
+            (EventType::CloseTabIPC(index), _) => {
+                for window_context in self.windows.values_mut() {
+                    window_context.close_tab_at(index.saturating_sub(1));
+                    break;
+                }
+            },
             // Shutdown all windows.
             #[cfg(unix)]
             (EventType::Shutdown, _) => event_loop.exit(),
@@ -570,6 +607,14 @@ pub enum EventType {
     IpcConfig(IpcConfig),
     #[cfg(unix)]
     IpcGetConfig(Arc<UnixStream>),
+    #[cfg(unix)]
+    CreateTabIPC(TabCreateOptions),
+    #[cfg(unix)]
+    ListTabsIPC(Arc<UnixStream>),
+    #[cfg(unix)]
+    SelectTabIPC(usize),
+    #[cfg(unix)]
+    CloseTabIPC(usize),
     BlinkCursor,
     BlinkCursorTimeout,
     SearchNext,
@@ -2119,6 +2164,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 #[cfg(unix)]
                 EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::Shutdown => (),
                 EventType::Tab(_) => (),
+                EventType::CreateTabIPC(_)
+                | EventType::ListTabsIPC(_)
+                | EventType::SelectTabIPC(_)
+                | EventType::CloseTabIPC(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)
