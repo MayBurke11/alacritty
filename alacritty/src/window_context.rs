@@ -705,13 +705,37 @@ impl WindowContext {
                         let dir = std::env::var("HOME")
                             .map(std::path::PathBuf::from)
                             .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                            .join(".config").join("alacritty");
+                            .join(".config").join("alacritty").join("sessions");
                         let _ = std::fs::create_dir_all(&dir);
-                        let path = dir.join("session.json");
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let path = dir.join(format!("session-{timestamp}.json"));
                         if let Err(err) = std::fs::write(&path, &json) {
                             log::warn!("Failed to save session: {err}");
                         } else {
                             log::info!("Session saved to {}", path.display());
+                        }
+                    },
+                    _ => {},
+                }
+            },
+            MenuSelection::List { ref list_type, ref value } => {
+                match list_type.as_str() {
+                    "sessions" => {
+                        let dir = std::env::var("HOME")
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                            .join(".config").join("alacritty").join("sessions");
+                        let path = dir.join(format!("{value}.json"));
+                        match std::fs::read(&path) {
+                            Ok(data) => {
+                                if let Err(err) = self.restore_tabs(&data) {
+                                    log::warn!("Failed to restore session: {err}");
+                                }
+                            },
+                            Err(err) => log::warn!("Failed to load session {}: {err}", path.display()),
                         }
                     },
                     _ => {},

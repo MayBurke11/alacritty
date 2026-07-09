@@ -28,6 +28,11 @@ pub struct MenuItem {
     #[serde(default)]
     pub action: Option<String>,
 
+    /// Dynamic list source (takes priority over submenu).
+    /// When set, the menu enters list mode and shows items from this source.
+    #[serde(default)]
+    pub list: Option<String>,
+
     /// Sub-menu items (shown on click if non-empty).
     #[serde(default)]
     pub submenu: Vec<MenuItem>,

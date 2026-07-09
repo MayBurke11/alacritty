@@ -712,6 +712,13 @@ pub enum TabAction {
     MenuLetterKey(char),
 }
 
+/// Dynamic list mode state.
+#[derive(Clone, Debug)]
+pub enum ListMode {
+    /// Browsing saved session files.
+    Sessions(Vec<String>),
+}
+
 /// Modal menu state.
 #[derive(Clone, Debug, Default)]
 pub struct MenuState {
@@ -722,6 +729,8 @@ pub struct MenuState {
     /// Path of expanded submenus into the menu config tree.
     /// Empty = top level.
     pub path: Vec<usize>,
+    /// Active list mode — when set, the bar shows a dynamic list instead of config items.
+    pub list_mode: Option<ListMode>,
 }
 
 /// Result of selecting a menu item.
@@ -731,12 +740,32 @@ pub enum MenuSelection {
     Command(String, Vec<String>),
     /// Dispatch a built-in action.
     Action(String),
+    /// Select an item from a dynamic list.
+    List { list_type: String, value: String },
 }
 
 impl MenuState {
     /// Get the labels for the current bar level.
     pub fn bar_labels(&self, menu: &crate::config::menu::Menu) -> Vec<(String, bool)> {
         let mut labels: Vec<(String, bool)> = Vec::new();
+
+        // List mode: show mode indicator + dynamic list items.
+        if let Some(ref list_mode) = self.list_mode {
+            let mode_label = match list_mode {
+                ListMode::Sessions(_) => " LOAD ",
+            };
+            labels.push((mode_label.to_string(), false));
+            match list_mode {
+                ListMode::Sessions(items) => {
+                    for (i, item) in items.iter().enumerate() {
+                        let focused = self.focus == i + 1;
+                        labels.push((format!(" {item} "), focused));
+                    }
+                },
+            }
+            return labels;
+        }
+
         let mode_label = if self.active {
             if self.path.is_empty() { "ACTIVE" } else { " BACK " }
         } else {
@@ -762,15 +791,66 @@ impl MenuState {
             self.active = !self.active;
             if !self.active {
                 self.path.clear();
+                self.list_mode = None;
             }
             return None;
         }
+
+        // List mode: select an item from the dynamic list.
+        if let Some(ref list_mode) = self.list_mode {
+            let item_idx = self.focus - 1;
+            match list_mode {
+                ListMode::Sessions(items) => {
+                    if item_idx < items.len() {
+                        let filename = items[item_idx].clone();
+                        self.list_mode = None;
+                        self.focus = 0;
+                        self.active = false;
+                        return Some(MenuSelection::List { list_type: "sessions".into(), value: filename });
+                    }
+                },
+            }
+            return None;
+        }
+
         let item_idx = self.focus - 1;
         let items = self.items_at(menu);
         if item_idx >= items.len() {
             return None;
         }
         let item = &items[item_idx];
+
+        // Dynamic list: enter list mode instead of submenu.
+        if let Some(ref list_type) = item.list {
+            match list_type.as_str() {
+                "sessions" => {
+                    // Scan ~/.config/alacritty/sessions/ for .json files.
+                    let sessions_dir = std::env::var("HOME")
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                        .join(".config").join("alacritty").join("sessions");
+                    let mut entries: Vec<String> = Vec::new();
+                    if let Ok(rd) = std::fs::read_dir(&sessions_dir) {
+                        for entry in rd.flatten() {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            if name.ends_with(".json") {
+                                entries.push(name.trim_end_matches(".json").to_string());
+                            }
+                        }
+                    }
+                    entries.sort();
+                    if entries.is_empty() {
+                        // Nothing to load — do nothing.
+                        return None;
+                    }
+                    self.list_mode = Some(ListMode::Sessions(entries));
+                    self.focus = 0;
+                    return None;
+                },
+                _ => return None,
+            }
+        }
+
         if !item.submenu.is_empty() {
             self.path.push(item_idx);
             self.focus = 0;
@@ -794,7 +874,9 @@ impl MenuState {
 
     /// Go back one level, or deactivate if at top.
     pub fn back(&mut self) {
-        if self.path.is_empty() {
+        if self.list_mode.is_some() {
+            self.list_mode = None;
+        } else if self.path.is_empty() {
             self.active = false;
         } else {
             self.path.pop();
@@ -816,7 +898,13 @@ impl MenuState {
 
     /// Count of items currently visible (excluding mode indicator).
     pub fn item_count(&self, menu: &crate::config::menu::Menu) -> usize {
-        self.items_at(menu).len()
+        if let Some(ref list_mode) = self.list_mode {
+            match list_mode {
+                ListMode::Sessions(items) => items.len(),
+            }
+        } else {
+            self.items_at(menu).len()
+        }
     }
 }
 
