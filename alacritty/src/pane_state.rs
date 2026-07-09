@@ -45,9 +45,6 @@ impl PaneState {
 impl Drop for PaneState {
     fn drop(&mut self) {
         let _ = self.notifier.0.send(alacritty_terminal::event_loop::Msg::Shutdown);
-        #[cfg(not(windows))]
-        unsafe {
-            libc::close(self.master_fd);
-        }
+        // master_fd is owned by PtyEventLoop, not by us. Don't close it here.
     }
 }

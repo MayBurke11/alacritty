@@ -2068,6 +2068,20 @@ impl WindowContext {
                     if let Some(&first) = self.tabs[tab_idx].pane_tree.leaf_ids().first() {
                         self.tabs[tab_idx].active_pane = first;
                     }
+                    // If only one pane remains, resize it to full viewport.
+                    if self.tabs[tab_idx].pane_tree.leaf_ids().len() == 1 {
+                        let size_info = self.display.size_info;
+                        let tab = &mut self.tabs[tab_idx];
+                        if tab.active_pane == PaneId(0) {
+                            let mut t = tab.terminal.lock();
+                            t.resize(size_info);
+                            let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into()));
+                        } else if let Some(pane) = tab.additional_panes.get_mut(&tab.active_pane) {
+                            let mut t = pane.terminal.lock();
+                            t.resize(size_info);
+                            let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into()));
+                        }
+                    }
                     self.display.damage_tracker.next_frame().mark_fully_damaged();
                     self.display.pending_update.dirty = true;
                     self.dirty = true;
