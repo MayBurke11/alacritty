@@ -99,8 +99,9 @@ no_switch = true
 4. `select-tab` / `close-tab` — completes IPC CRUD
 5. QuickRun (`Ctrl+Shift+P`) — inline `run:` → new tab with command
 6. `[[tabs.presets]]` — startup tabs in config
-7. Per-tab config overrides — dark editor, light shell
-8. Save/restore — session management
+7. ✅ Per-tab config overrides — `-o` per tab 🧪 TEST
+8. Tab pinning — protect tabs from accidental close
+9. Save/restore — session management
 
 ---
 
