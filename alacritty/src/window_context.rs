@@ -1193,6 +1193,7 @@ impl WindowContext {
             &tab_titles,
             self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
             self.run_editor.as_deref(),
+            self.expanded_menu,
         );
     }
 
@@ -1275,6 +1276,14 @@ impl WindowContext {
                         TabAction::RunInput(c) => self.run_editor_input(*c),
                         TabAction::RunPopWord => self.run_editor_pop_word(),
                         TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
+                        TabAction::ToggleMenu(idx) => {
+                            self.expanded_menu = if self.expanded_menu == Some(*idx) {
+                                None
+                            } else {
+                                Some(*idx)
+                            };
+                            self.dirty = true;
+                        },
                     }
                     continue;
                 },

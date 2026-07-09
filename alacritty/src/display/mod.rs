@@ -414,6 +414,8 @@ pub struct Display {
     // Mouse point position when highlighting hints.
     hint_mouse_point: Option<Point>,
     tab_hit_boxes: Vec<TabHitBox>,
+    /// Hit boxes for menu bar items.
+    pub menu_hit_boxes: Vec<MenuHitBox>,
 
     renderer: ManuallyDrop<Renderer>,
     renderer_preference: Option<RendererPreference>,
@@ -433,6 +435,15 @@ struct TabHitBox {
     y: i32,
     width: i32,
     height: i32,
+}
+
+/// Hit box for a menu bar item.
+pub struct MenuHitBox {
+    pub index: usize,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[inline]
@@ -577,6 +588,7 @@ impl Display {
             highlighted_hint: Default::default(),
             hint_mouse_point: Default::default(),
             tab_hit_boxes: Default::default(),
+            menu_hit_boxes: Default::default(),
             pending_update: Default::default(),
             cursor_hidden: Default::default(),
             meter: Default::default(),
@@ -836,6 +848,7 @@ impl Display {
         tab_titles: &[(String, bool)],
         tab_title_editor: Option<&str>,
         run_editor: Option<&str>,
+        expanded_menu: Option<usize>,
     ) {
         // Collect renderable content before the terminal is dropped.
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
@@ -1145,7 +1158,7 @@ impl Display {
                     }
                 },
             };
-            self.draw_menu_bar(config, &config.menu.items, menu_line);
+            self.draw_menu_bar(config, &config.menu.items, menu_line, expanded_menu);
         }
 
         self.draw_render_timer(config);
@@ -1195,6 +1208,14 @@ impl Display {
 
     pub fn tab_at_position(&self, x: usize, y: usize) -> Option<usize> {
         self.tab_hit_boxes.iter().find_map(|hit_box| {
+            let inside_x = (hit_box.x..hit_box.x + hit_box.width).contains(&(x as i32));
+            let inside_y = (hit_box.y..hit_box.y + hit_box.height).contains(&(y as i32));
+            (inside_x && inside_y).then_some(hit_box.index)
+        })
+    }
+
+    pub fn menu_at_position(&self, x: usize, y: usize) -> Option<usize> {
+        self.menu_hit_boxes.iter().find_map(|hit_box| {
             let inside_x = (hit_box.x..hit_box.x + hit_box.width).contains(&(x as i32));
             let inside_y = (hit_box.y..hit_box.y + hit_box.height).contains(&(y as i32));
             (inside_x && inside_y).then_some(hit_box.index)
@@ -1940,6 +1961,7 @@ impl Display {
         config: &UiConfig,
         items: &[crate::config::menu::MenuItem],
         line: usize,
+        expanded: Option<usize>,
     ) {
         let metrics = self.glyph_cache.font_metrics();
         let size_info = self.size_info;
@@ -1966,7 +1988,8 @@ impl Display {
         )]);
 
         let mut column = 0usize;
-        for (_idx, item) in items.iter().enumerate() {
+        self.menu_hit_boxes.clear();
+        for (idx, item) in items.iter().enumerate() {
             let label = format!(" {} ", item.label);
             let label_width: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
             if column + label_width > num_cols {
@@ -1991,7 +2014,43 @@ impl Display {
                 Flags::empty(),
             );
 
+            self.menu_hit_boxes.push(MenuHitBox {
+                index: idx,
+                x: body_x as i32,
+                y: y as i32,
+                width: body_width as i32,
+                height: height as i32,
+            });
+
             column += label_width;
+        }
+
+        // Render submenu row if expanded.
+        if let Some(idx) = expanded {
+            if idx < items.len() {
+                let sub = &items[idx].submenu;
+                if !sub.is_empty() {
+                    let sub_y = y + height;
+                    let mut sub_col = 0usize;
+                    for item in sub.iter() {
+                        let label = format!(" {} ", item.label);
+                        let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
+                        if sub_col + w > num_cols { break; }
+                        let sx = size_info.padding_x() + size_info.cell_width() * sub_col as f32;
+                        let sw = size_info.cell_width() * w as f32;
+                        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+                            sx, sub_y, sw, height, inactive_bg * 0.9, 1.0,
+                        )]);
+                        self.draw_string_with_flags(
+                            Point::new(line + 1, Column(sub_col)),
+                            inactive_fg,
+                            inactive_bg * 0.9,
+                            0.0, &label, &size_info, Flags::empty(),
+                        );
+                        sub_col += w;
+                    }
+                }
+            }
         }
     }
 
