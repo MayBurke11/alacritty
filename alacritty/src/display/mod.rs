@@ -1153,12 +1153,18 @@ impl Display {
                         && config.tabs.tab_bar_edge == TabBarEdge::Top)
                 },
                 crate::config::menu::MenuBarEdge::Bottom => {
-                    let tab_at_bottom = config.tabs.display_tab_bar(tab_titles.len())
-                        && config.tabs.tab_bar_edge == TabBarEdge::Bottom;
-                    if tab_at_bottom {
-                        size_info.screen_lines() + 1
+                    let search_lines =
+                        usize::from(search_state.regex().is_some()) + tab_title_editor_offset;
+                    let message_lines =
+                        message_buffer.message().map_or(0, |m| m.text(&size_info).len());
+                    let base = size_info.screen_lines() + search_lines + message_lines;
+                    // If tab bar is also at Bottom, put menu below it.
+                    if config.tabs.display_tab_bar(tab_titles.len())
+                        && config.tabs.tab_bar_edge == TabBarEdge::Bottom
+                    {
+                        base + 1
                     } else {
-                        size_info.screen_lines()
+                        base
                     }
                 },
             };
