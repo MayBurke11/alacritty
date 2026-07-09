@@ -1144,7 +1144,8 @@ impl Display {
             self.draw_tab_bar(config, tab_titles, line);
         }
 
-        // Draw menu bar.
+        // Draw menu bar — reuse draw_tab_bar with menu labels as inactive tabs.
+        self.menu_hit_boxes.clear();
         if !config.menu.items.is_empty() {
             let menu_line = match config.menu.menu_bar_edge {
                 crate::config::menu::MenuBarEdge::Top => {
@@ -1161,7 +1162,37 @@ impl Display {
                     }
                 },
             };
-            self.draw_menu_bar(config, &config.menu.items, menu_line, expanded_menu);
+
+            let menu_labels: Vec<(String, bool)> = config.menu.items.iter()
+                .map(|item| (item.label.clone(), false))
+                .collect();
+
+            let old_count = self.tab_hit_boxes.len();
+            self.draw_tab_bar(config, &menu_labels, menu_line);
+            // Extract menu hit boxes (newly added after tabs).
+            self.menu_hit_boxes = self.tab_hit_boxes.drain(old_count..).map(|hb| MenuHitBox {
+                index: hb.index,
+                x: hb.x, y: hb.y, width: hb.width, height: hb.height,
+                sub_index: None,
+            }).collect();
+
+            // Submenu row.
+            if let Some(idx) = expanded_menu {
+                if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
+                    let sub_labels: Vec<(String, bool)> = config.menu.items[idx].submenu.iter()
+                        .map(|sub| (sub.label.clone(), false))
+                        .collect();
+                    let old_count2 = self.tab_hit_boxes.len();
+                    self.draw_tab_bar(config, &sub_labels, menu_line + 1);
+                    self.menu_hit_boxes.extend(
+                        self.tab_hit_boxes.drain(old_count2..).map(|hb| MenuHitBox {
+                            index: idx,     // parent menu index
+                            x: hb.x, y: hb.y, width: hb.width, height: hb.height,
+                            sub_index: Some(hb.index), // submenu item index within the submenu
+                        })
+                    );
+                }
+            }
         }
 
         self.draw_render_timer(config);
@@ -1959,113 +1990,6 @@ impl Display {
     }
 
     /// Draw a menu bar styled like the tab bar.
-    fn draw_menu_bar(
-        &mut self,
-        config: &UiConfig,
-        items: &[crate::config::menu::MenuItem],
-        line: usize,
-        expanded: Option<usize>,
-    ) {
-        let metrics = self.glyph_cache.font_metrics();
-        let size_info = self.size_info;
-        let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y());
-        let height = size_info.cell_height();
-        let num_cols = size_info.columns();
-
-        self.damage_tracker.frame().add_viewport_rect(
-            &size_info, 0, y as i32, size_info.width() as i32, height as i32,
-        );
-        self.damage_tracker.next_frame().add_viewport_rect(
-            &size_info, 0, y as i32, size_info.width() as i32, height as i32,
-        );
-
-        // Use same colors as inactive tabs.
-        let bar_bg = config.colors.primary.background * 0.8;
-        let fg = config.colors.primary.foreground;
-        let inactive_bg = config.tabs.inactive_tab_background.unwrap_or(bar_bg);
-        let inactive_fg = config.tabs.inactive_tab_foreground.unwrap_or(fg);
-
-        // Background bar.
-        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-            0., y, size_info.width(), height, bar_bg, 1.0,
-        )]);
-
-        let mut column = 0usize;
-        self.menu_hit_boxes.clear();
-        for (idx, item) in items.iter().enumerate() {
-            let label = format!(" {} ", item.label);
-            let label_width: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
-            if column + label_width > num_cols {
-                break;
-            }
-
-            let body_x = size_info.padding_x() + size_info.cell_width() * column as f32;
-            let body_width = size_info.cell_width() * label_width as f32;
-
-            // Tab-style background for each item.
-            self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-                body_x, y, body_width, height, inactive_bg, 1.0,
-            )]);
-
-            self.draw_string_with_flags(
-                Point::new(line, Column(column)),
-                inactive_fg,
-                inactive_bg,
-                0.0,
-                &label,
-                &size_info,
-                Flags::empty(),
-            );
-
-            self.menu_hit_boxes.push(MenuHitBox {
-                index: idx,
-                x: body_x as i32,
-                y: y as i32,
-                width: body_width as i32,
-                height: height as i32,
-                sub_index: None,
-            });
-
-            column += label_width;
-        }
-
-        // Render submenu row if expanded.
-        if let Some(idx) = expanded {
-            if idx < items.len() {
-                let sub = &items[idx].submenu;
-                if !sub.is_empty() {
-                    let sub_y = y + height;
-                    let mut sub_col = 0usize;
-                    for (sidx, item) in sub.iter().enumerate() {
-                        let label = format!(" {} ", item.label);
-                        let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
-                        if sub_col + w > num_cols { break; }
-                        let sx = size_info.padding_x() + size_info.cell_width() * sub_col as f32;
-                        let sw = size_info.cell_width() * w as f32;
-                        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-                            sx, sub_y, sw, height, inactive_bg * 0.9, 1.0,
-                        )]);
-                        self.draw_string_with_flags(
-                            Point::new(line + 1, Column(sub_col)),
-                            inactive_fg,
-                            inactive_bg * 0.9,
-                            0.0, &label, &size_info, Flags::empty(),
-                        );
-                        self.menu_hit_boxes.push(MenuHitBox {
-                            index: idx,
-                            x: sx as i32,
-                            y: sub_y as i32,
-                            width: sw as i32,
-                            height: height as i32,
-                            sub_index: Some(sidx),
-                        });
-                        sub_col += w;
-                    }
-                }
-            }
-        }
-    }
-
     /// Request a new frame for a window on Wayland.
     fn request_frame(&mut self, scheduler: &mut Scheduler) {
         // Mark that we've used a frame.
