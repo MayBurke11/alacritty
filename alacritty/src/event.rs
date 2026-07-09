@@ -1,5 +1,6 @@
 //! Process window events.
 
+use crate::pane_tree::PaneId;
 use crate::ConfigMonitor;
 use glutin::config::GetGlConfig;
 use std::borrow::Cow;
@@ -302,7 +303,7 @@ impl ApplicationHandler<Event> for Processor {
             info!(target: LOG_TARGET_WINIT, "{event:?}");
         }
 
-        let Event { window_id, tab_id, payload } = event;
+        let Event { window_id, tab_id, pane_id: _pane_id, payload } = event;
 
         // Handle events which don't mandate the WindowId.
         match (payload, window_id) {
@@ -470,7 +471,7 @@ impl ApplicationHandler<Event> for Processor {
             (EventType::Shutdown, _) => event_loop.exit(),
             // Process events affecting all windows.
             (payload, None) => {
-                let event = WinitEvent::UserEvent(Event { window_id: None, tab_id, payload });
+                let event = WinitEvent::UserEvent(Event { window_id: None, tab_id, pane_id: None, payload });
                 for window_context in self.windows.values_mut() {
                     window_context.handle_event(
                         #[cfg(target_os = "macos")]
@@ -535,6 +536,7 @@ impl ApplicationHandler<Event> for Processor {
                         WinitEvent::UserEvent(Event {
                             window_id: Some(window_id),
                             tab_id,
+                            pane_id: None,
                             payload,
                         }),
                     );
@@ -605,13 +607,16 @@ pub struct Event {
     /// Limit event to a specific tab inside the window.
     pub(crate) tab_id: Option<TabId>,
 
+    /// Limit event to a specific pane inside the tab.
+    pub(crate) pane_id: Option<PaneId>,
+
     /// Event payload.
     pub(crate) payload: EventType,
 }
 
 impl Event {
     pub fn new<I: Into<Option<WindowId>>>(payload: EventType, window_id: I) -> Self {
-        Self { window_id: window_id.into(), tab_id: None, payload }
+        Self { window_id: window_id.into(), tab_id: None, pane_id: None, payload }
     }
 
     pub fn with_tab<I: Into<Option<WindowId>>>(
@@ -619,7 +624,16 @@ impl Event {
         window_id: I,
         tab_id: TabId,
     ) -> Self {
-        Self { window_id: window_id.into(), tab_id: Some(tab_id), payload }
+        Self { window_id: window_id.into(), tab_id: Some(tab_id), pane_id: None, payload }
+    }
+
+    pub fn with_pane<I: Into<Option<WindowId>>>(
+        payload: EventType,
+        window_id: I,
+        tab_id: TabId,
+        pane_id: PaneId,
+    ) -> Self {
+        Self { window_id: window_id.into(), tab_id: Some(tab_id), pane_id: Some(pane_id), payload }
     }
 }
 
@@ -694,6 +708,19 @@ pub enum TabAction {
     CancelTitle,
     TitleInput(char),
     TitlePopWord,
+    // Pane management.
+    SplitRight,
+    SplitDown,
+    ClosePane,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
+    ToggleZoom,
+    ResizeRight,
+    ResizeLeft,
+    ResizeUp,
+    ResizeDown,
     Run,
     ConfirmRun,
     ConfirmRunNoSwitch,
@@ -1365,6 +1392,90 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     fn tab_title_pop_word(&mut self) {
         let _ = self.event_proxy.send_event(Event::new(
             EventType::Tab(TabAction::TitlePopWord),
+            self.display.window.id(),
+        ));
+    }
+
+    fn split_pane_right(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::SplitRight),
+            self.display.window.id(),
+        ));
+    }
+
+    fn split_pane_down(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::SplitDown),
+            self.display.window.id(),
+        ));
+    }
+
+    fn close_pane(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ClosePane),
+            self.display.window.id(),
+        ));
+    }
+
+    fn focus_pane_left(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::FocusLeft),
+            self.display.window.id(),
+        ));
+    }
+
+    fn focus_pane_right(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::FocusRight),
+            self.display.window.id(),
+        ));
+    }
+
+    fn focus_pane_up(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::FocusUp),
+            self.display.window.id(),
+        ));
+    }
+
+    fn focus_pane_down(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::FocusDown),
+            self.display.window.id(),
+        ));
+    }
+
+    fn toggle_zoom(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ToggleZoom),
+            self.display.window.id(),
+        ));
+    }
+
+    fn resize_pane_right(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ResizeRight),
+            self.display.window.id(),
+        ));
+    }
+
+    fn resize_pane_left(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ResizeLeft),
+            self.display.window.id(),
+        ));
+    }
+
+    fn resize_pane_up(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ResizeUp),
+            self.display.window.id(),
+        ));
+    }
+
+    fn resize_pane_down(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::ResizeDown),
             self.display.window.id(),
         ));
     }
@@ -2668,21 +2779,37 @@ pub struct EventProxy {
     proxy: EventLoopProxy<Event>,
     window_id: WindowId,
     tab_id: TabId,
+    pane_id: Option<PaneId>,
 }
 
 impl EventProxy {
-    pub fn new(proxy: EventLoopProxy<Event>, window_id: WindowId, tab_id: TabId) -> Self {
-        Self { proxy, window_id, tab_id }
+    pub fn new(
+        proxy: EventLoopProxy<Event>,
+        window_id: WindowId,
+        tab_id: TabId,
+        pane_id: Option<PaneId>,
+    ) -> Self {
+        Self { proxy, window_id, tab_id, pane_id }
     }
 
     /// Send an event to the event loop.
     pub fn send_event(&self, event: EventType) {
-        let _ = self.proxy.send_event(Event::with_tab(event, self.window_id, self.tab_id));
+        let _ = self.proxy.send_event(Event::with_pane(
+            event,
+            self.window_id,
+            self.tab_id,
+            self.pane_id.unwrap_or(PaneId(0)),
+        ));
     }
 }
 
 impl EventListener for EventProxy {
     fn send_event(&self, event: TerminalEvent) {
-        let _ = self.proxy.send_event(Event::with_tab(event.into(), self.window_id, self.tab_id));
+        let _ = self.proxy.send_event(Event::with_pane(
+            event.into(),
+            self.window_id,
+            self.tab_id,
+            self.pane_id.unwrap_or(PaneId(0)),
+        ));
     }
 }

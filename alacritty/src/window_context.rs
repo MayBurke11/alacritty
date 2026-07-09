@@ -123,7 +123,7 @@ impl TerminalTab {
         let mut pty_config = config.pty_config();
         options.terminal_options.override_pty_config(&mut pty_config);
 
-        let event_proxy = EventProxy::new(proxy.clone(), window_id, id);
+        let event_proxy = EventProxy::new(proxy.clone(), window_id, id, None);
 
         let terminal = Term::new(config.term_options(), &size_info, event_proxy.clone());
         let terminal = Arc::new(FairMutex::new(terminal));
@@ -1432,6 +1432,21 @@ impl WindowContext {
                                 }
                             }
                             self.dirty = true;
+                        },
+                        // Pane actions (no-op for now, implemented in tiling phase).
+                        TabAction::SplitRight
+                        | TabAction::SplitDown
+                        | TabAction::ClosePane
+                        | TabAction::FocusLeft
+                        | TabAction::FocusRight
+                        | TabAction::FocusUp
+                        | TabAction::FocusDown
+                        | TabAction::ToggleZoom
+                        | TabAction::ResizeRight
+                        | TabAction::ResizeLeft
+                        | TabAction::ResizeUp
+                        | TabAction::ResizeDown => {
+                            log::debug!("[pane] action={:?} (not yet implemented)", action);
                         },
                     }
                     continue;

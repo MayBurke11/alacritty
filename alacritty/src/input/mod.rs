@@ -143,6 +143,18 @@ pub trait ActionContext<T: EventListener> {
     fn cancel_tab_title(&mut self) {}
     fn tab_title_input(&mut self, _c: char) {}
     fn tab_title_pop_word(&mut self) {}
+    fn split_pane_right(&mut self) {}
+    fn split_pane_down(&mut self) {}
+    fn close_pane(&mut self) {}
+    fn focus_pane_left(&mut self) {}
+    fn focus_pane_right(&mut self) {}
+    fn focus_pane_up(&mut self) {}
+    fn focus_pane_down(&mut self) {}
+    fn toggle_zoom(&mut self) {}
+    fn resize_pane_right(&mut self) {}
+    fn resize_pane_left(&mut self) {}
+    fn resize_pane_up(&mut self) {}
+    fn resize_pane_down(&mut self) {}
     fn run_editor_active(&self) -> bool {
         false
     }
@@ -530,6 +542,18 @@ impl<T: EventListener> Execute<T> for Action {
             Action::QuickRun => ctx.quick_run(),
             Action::TogglePin => ctx.toggle_pin_tab(),
             Action::ToggleLocked => ctx.toggle_locked(),
+            Action::SplitRight => ctx.split_pane_right(),
+            Action::SplitDown => ctx.split_pane_down(),
+            Action::ClosePane => ctx.close_pane(),
+            Action::FocusLeft => ctx.focus_pane_left(),
+            Action::FocusRight => ctx.focus_pane_right(),
+            Action::FocusUp => ctx.focus_pane_up(),
+            Action::FocusDown => ctx.focus_pane_down(),
+            Action::ToggleZoom => ctx.toggle_zoom(),
+            Action::ResizeRight => ctx.resize_pane_right(),
+            Action::ResizeLeft => ctx.resize_pane_left(),
+            Action::ResizeUp => ctx.resize_pane_up(),
+            Action::ResizeDown => ctx.resize_pane_down(),
             _ => (),
         }
     }

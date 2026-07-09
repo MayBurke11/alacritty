@@ -235,6 +235,42 @@ pub enum Action {
     /// Create new window in a tab.
     CreateNewTab,
 
+    /// Split pane right.
+    SplitRight,
+
+    /// Split pane down.
+    SplitDown,
+
+    /// Close current pane.
+    ClosePane,
+
+    /// Focus pane left.
+    FocusLeft,
+
+    /// Focus pane right.
+    FocusRight,
+
+    /// Focus pane up.
+    FocusUp,
+
+    /// Focus pane down.
+    FocusDown,
+
+    /// Toggle pane zoom.
+    ToggleZoom,
+
+    /// Resize pane right.
+    ResizeRight,
+
+    /// Resize pane left.
+    ResizeLeft,
+
+    /// Resize pane up.
+    ResizeUp,
+
+    /// Resize pane down.
+    ResizeDown,
+
     /// Toggle fullscreen.
     ToggleFullscreen,
 
@@ -588,6 +624,19 @@ fn common_keybindings() -> Vec<KeyBinding> {
         ".",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabForward;
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
+        // Pane actions.
+        "!",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::SplitRight;
+        "@",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::SplitDown;
+        "#",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::ClosePane;
+        "$",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusLeft;
+        "%",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusRight;
+        "^",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusUp;
+        "&",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusDown;
+        ArrowRight, ModifiersState::ALT;                                                                  Action::FocusRight;
+        ArrowLeft,  ModifiersState::ALT;                                                                  Action::FocusLeft;
+        ArrowUp,    ModifiersState::ALT;                                                                  Action::FocusUp;
+        ArrowDown,  ModifiersState::ALT;                                                                  Action::FocusDown;
+        "*",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::ToggleZoom;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
         "g",        ModifiersState::CONTROL;                                                             Action::ToggleLocked;
@@ -596,7 +645,12 @@ fn common_keybindings() -> Vec<KeyBinding> {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", test)))]
 pub fn platform_key_bindings() -> Vec<KeyBinding> {
-    common_keybindings()
+    let mut bindings = common_keybindings();
+    bindings.extend(bindings!(
+        KeyBinding;
+        "f", ModifiersState::ALT; Action::ToggleZoom;
+    ));
+    bindings
 }
 
 #[cfg(all(target_os = "windows", not(test)))]
