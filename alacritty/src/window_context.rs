@@ -741,6 +741,10 @@ impl WindowContext {
                     "split-down" => self.split_pane(SplitDir::Vertical),
                     "close-pane" => self.close_pane(),
                     "toggle-zoom" => self.toggle_zoom(),
+                    "focus-left" => self.focus_pane(FocusDir::Left),
+                    "focus-right" => self.focus_pane(FocusDir::Right),
+                    "focus-up" => self.focus_pane(FocusDir::Up),
+                    "focus-down" => self.focus_pane(FocusDir::Down),
                     _ => {},
                 }
             },
