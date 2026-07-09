@@ -1127,6 +1127,7 @@ impl Display {
         }
 
         self.tab_hit_boxes.clear();
+        self.menu_hit_boxes.clear();
         if config.tabs.display_tab_bar(tab_titles.len()) {
             let line = match config.tabs.tab_bar_edge {
                 TabBarEdge::Top => 0,
