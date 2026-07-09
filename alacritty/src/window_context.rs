@@ -1404,6 +1404,15 @@ impl WindowContext {
             }
 
             display.draw_pane_dividers();
+
+            // Draw editor bars on top.
+            display.draw_editor_footer(
+                &tab_config,
+                self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
+                self.run_editor.as_deref(),
+                active_tab.search_state.regex().is_some(),
+            );
+
             display.present(scheduler);
         } else {
             let terminal_lock = if active_tab.active_pane == PaneId(0) {

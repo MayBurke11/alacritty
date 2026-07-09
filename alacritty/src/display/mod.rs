@@ -1594,6 +1594,36 @@ impl Display {
         self.draw_footer_text(config, text, self.size_info.screen_lines());
     }
 
+    /// Draw tab title editor and/or run editor footer.
+    pub fn draw_editor_footer(
+        &mut self,
+        config: &UiConfig,
+        tab_title_editor: Option<&str>,
+        run_editor: Option<&str>,
+        is_searching: bool,
+    ) {
+        let size_info = self.size_info;
+        if let Some(title) = tab_title_editor {
+            let line = size_info.screen_lines() + usize::from(is_searching);
+            self.draw_footer_text(config, &format_search_prompt("Tab title: ", title, size_info.columns()), line);
+            let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;
+            let w = size_info.width() as i32;
+            let h = size_info.cell_height() as i32;
+            self.damage_tracker.frame().add_viewport_rect(&size_info, 0, y, w, h);
+            self.damage_tracker.next_frame().add_viewport_rect(&size_info, 0, y, w, h);
+        }
+        if let Some(run) = run_editor {
+            let line = size_info.screen_lines() + usize::from(is_searching) + usize::from(tab_title_editor.is_some());
+            let prompt = format!("run: {}", run);
+            self.draw_footer_text(config, &format_search_prompt(&prompt, "", size_info.columns()), line);
+            let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;
+            let w = size_info.width() as i32;
+            let h = size_info.cell_height() as i32;
+            self.damage_tracker.frame().add_viewport_rect(&size_info, 0, y, w, h);
+            self.damage_tracker.next_frame().add_viewport_rect(&size_info, 0, y, w, h);
+        }
+    }
+
     #[inline(never)]
     fn draw_footer_text(&mut self, config: &UiConfig, text: &str, line: usize) {
         // Assure text length is at least num_cols.
