@@ -1144,21 +1144,21 @@ impl Display {
             self.draw_tab_bar(config, tab_titles, line);
         }
 
-        // Draw menu bar — reuse draw_tab_bar with menu labels as inactive tabs.
+        // Draw menu bar — rendered like inactive tabs.
         self.menu_hit_boxes.clear();
         if !config.menu.items.is_empty() {
+            let metrics = self.glyph_cache.font_metrics();
+            let search_lines =
+                usize::from(search_state.regex().is_some()) + tab_title_editor_offset;
+            let message_lines =
+                message_buffer.message().map_or(0, |m| m.text(&size_info).len());
             let menu_line = match config.menu.menu_bar_edge {
                 crate::config::menu::MenuBarEdge::Top => {
                     usize::from(config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Top)
                 },
                 crate::config::menu::MenuBarEdge::Bottom => {
-                    let search_lines =
-                        usize::from(search_state.regex().is_some()) + tab_title_editor_offset;
-                    let message_lines =
-                        message_buffer.message().map_or(0, |m| m.text(&size_info).len());
                     let base = size_info.screen_lines() + search_lines + message_lines;
-                    // If tab bar is also at Bottom, put menu below it.
                     if config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Bottom
                     {
@@ -1169,34 +1169,73 @@ impl Display {
                 },
             };
 
-            let menu_labels: Vec<(String, bool)> = config.menu.items.iter()
-                .map(|item| (item.label.clone(), false))
-                .collect();
+            let num_cols = size_info.columns();
+            let bar_bg = config.colors.primary.background * 0.8;
+            let inactive_fg = config.tabs.inactive_tab_foreground
+                .unwrap_or(config.colors.primary.foreground);
+            let inactive_bg = config.tabs.inactive_tab_background
+                .unwrap_or(bar_bg);
 
-            let old_count = self.tab_hit_boxes.len();
-            self.draw_tab_bar(config, &menu_labels, menu_line);
-            // Extract menu hit boxes (newly added after tabs).
-            self.menu_hit_boxes = self.tab_hit_boxes.drain(old_count..).map(|hb| MenuHitBox {
-                index: hb.index,
-                x: hb.x, y: hb.y, width: hb.width, height: hb.height,
-                sub_index: None,
-            }).collect();
+            let y = size_info.cell_height().mul_add(menu_line as f32, size_info.padding_y());
+            let height = size_info.cell_height();
+            let width = size_info.width();
+
+            self.damage_tracker.frame().add_viewport_rect(
+                &size_info, 0, y as i32, width as i32, height as i32);
+            self.damage_tracker.next_frame().add_viewport_rect(
+                &size_info, 0, y as i32, width as i32, height as i32);
+
+            self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+                0., y, width, height, bar_bg, 1.0,
+            )]);
+
+            // Top-level menu items.
+            let mut col = 0usize;
+            for (idx, item) in config.menu.items.iter().enumerate() {
+                let label = format!(" {} ", item.label);
+                let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
+                if col + w > num_cols { break; }
+                let x = size_info.padding_x() + size_info.cell_width() * col as f32;
+                let bw = size_info.cell_width() * w as f32;
+                self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+                    x, y, bw, height, inactive_bg, 1.0,
+                )]);
+                self.draw_string_with_flags(
+                    Point::new(menu_line, Column(col)),
+                    inactive_fg, inactive_bg, 0.0, &label, &size_info, Flags::empty(),
+                );
+                self.menu_hit_boxes.push(MenuHitBox {
+                    index: idx, x: x as i32, y: y as i32,
+                    width: bw as i32, height: height as i32, sub_index: None,
+                });
+                col += w;
+            }
 
             // Submenu row.
             if let Some(idx) = expanded_menu {
                 if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
-                    let sub_labels: Vec<(String, bool)> = config.menu.items[idx].submenu.iter()
-                        .map(|sub| (sub.label.clone(), false))
-                        .collect();
-                    let old_count2 = self.tab_hit_boxes.len();
-                    self.draw_tab_bar(config, &sub_labels, menu_line + 1);
-                    self.menu_hit_boxes.extend(
-                        self.tab_hit_boxes.drain(old_count2..).map(|hb| MenuHitBox {
-                            index: idx,     // parent menu index
-                            x: hb.x, y: hb.y, width: hb.width, height: hb.height,
-                            sub_index: Some(hb.index), // submenu item index within the submenu
-                        })
-                    );
+                    let sub_y = y + height;
+                    let mut sub_col = 0usize;
+                    for (sidx, sub) in config.menu.items[idx].submenu.iter().enumerate() {
+                        let label = format!(" {} ", sub.label);
+                        let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
+                        if sub_col + w > num_cols { break; }
+                        let sx = size_info.padding_x() + size_info.cell_width() * sub_col as f32;
+                        let sw = size_info.cell_width() * w as f32;
+                        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+                            sx, sub_y, sw, height, inactive_bg * 0.9, 1.0,
+                        )]);
+                        self.draw_string_with_flags(
+                            Point::new(menu_line + 1, Column(sub_col)),
+                            inactive_fg, inactive_bg * 0.9, 0.0,
+                            &label, &size_info, Flags::empty(),
+                        );
+                        self.menu_hit_boxes.push(MenuHitBox {
+                            index: idx, x: sx as i32, y: sub_y as i32,
+                            width: sw as i32, height: height as i32, sub_index: Some(sidx),
+                        });
+                        sub_col += w;
+                    }
                 }
             }
         }
@@ -1596,6 +1635,34 @@ impl Display {
         };
         let visible_bar_bg =
             blend_rgb(config.colors.primary.background, rendered_bar_bg, translucent_alpha);
+        let active_fg =
+            config.tabs.active_tab_foreground.unwrap_or(config.colors.footer_bar_foreground());
+        let active_bg =
+            config.tabs.active_tab_background.unwrap_or(config.colors.footer_bar_background());
+        let inactive_fg =
+            config.tabs.inactive_tab_foreground.unwrap_or(config.colors.primary.foreground);
+        let default_inactive_bg = if config.window_opacity() < 1.0 {
+            darken_rgb(bar_bg, 0.82)
+        } else {
+            bar_bg
+        };
+        let inactive_bg = config.tabs.inactive_tab_background.unwrap_or(default_inactive_bg);
+
+        let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;
+        let width = size_info.width() as i32;
+        let height = size_info.cell_height() as i32;
+        self.damage_tracker.frame().add_viewport_rect(&size_info, 0, y, width, height);
+        self.damage_tracker.next_frame().add_viewport_rect(&size_info, 0, y, width, height);
+
+        let metrics = self.glyph_cache.font_metrics();
+        let mut rects = vec![RenderRect::new(
+            0.,
+            y as f32,
+            width as f32,
+            height as f32,
+            rendered_bar_bg,
+            translucent_alpha,
+        )];
         let active_fg =
             config.tabs.active_tab_foreground.unwrap_or(config.colors.footer_bar_foreground());
         let active_bg =
