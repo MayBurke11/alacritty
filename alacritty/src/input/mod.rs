@@ -123,10 +123,11 @@ pub trait ActionContext<T: EventListener> {
     fn tab_at_mouse(&mut self) -> Option<usize> {
         None
     }
-    fn menu_at_mouse(&mut self) -> Option<usize> {
+    fn menu_at_mouse(&mut self) -> Option<(usize, Option<usize>)> {
         None
     }
     fn toggle_menu(&mut self, _idx: usize) {}
+    fn menu_command(&mut self, _idx: usize, _sub_idx: usize) {}
     fn tab_title_editor_active(&self) -> bool {
         false
     }
@@ -1074,8 +1075,12 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             && button == MouseButton::Left
             && self.ctx.config().tabs.mouse.enabled
         {
-            if let Some(menu_idx) = self.ctx.menu_at_mouse() {
-                self.ctx.toggle_menu(menu_idx);
+            if let Some((menu_idx, sub_idx)) = self.ctx.menu_at_mouse() {
+                if let Some(sidx) = sub_idx {
+                    self.ctx.menu_command(menu_idx, sidx);
+                } else {
+                    self.ctx.toggle_menu(menu_idx);
+                }
                 self.ctx.window().set_mouse_cursor(CursorIcon::Pointer);
                 return;
             }

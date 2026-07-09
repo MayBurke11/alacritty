@@ -444,6 +444,8 @@ pub struct MenuHitBox {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// If Some(child), this is a submenu item of parent `index`.
+    pub sub_index: Option<usize>,
 }
 
 #[inline]
@@ -1215,11 +1217,11 @@ impl Display {
         })
     }
 
-    pub fn menu_at_position(&self, x: usize, y: usize) -> Option<usize> {
+    pub fn menu_at_position(&self, x: usize, y: usize) -> Option<(usize, Option<usize>)> {
         self.menu_hit_boxes.iter().find_map(|hit_box| {
             let inside_x = (hit_box.x..hit_box.x + hit_box.width).contains(&(x as i32));
             let inside_y = (hit_box.y..hit_box.y + hit_box.height).contains(&(y as i32));
-            (inside_x && inside_y).then_some(hit_box.index)
+            (inside_x && inside_y).then_some((hit_box.index, hit_box.sub_index))
         })
     }
 
@@ -2021,6 +2023,7 @@ impl Display {
                 y: y as i32,
                 width: body_width as i32,
                 height: height as i32,
+                sub_index: None,
             });
 
             column += label_width;
@@ -2033,7 +2036,7 @@ impl Display {
                 if !sub.is_empty() {
                     let sub_y = y + height;
                     let mut sub_col = 0usize;
-                    for item in sub.iter() {
+                    for (sidx, item) in sub.iter().enumerate() {
                         let label = format!(" {} ", item.label);
                         let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
                         if sub_col + w > num_cols { break; }
@@ -2048,6 +2051,14 @@ impl Display {
                             inactive_bg * 0.9,
                             0.0, &label, &size_info, Flags::empty(),
                         );
+                        self.menu_hit_boxes.push(MenuHitBox {
+                            index: idx,
+                            x: sx as i32,
+                            y: sub_y as i32,
+                            width: sw as i32,
+                            height: height as i32,
+                            sub_index: Some(sidx),
+                        });
                         sub_col += w;
                     }
                 }

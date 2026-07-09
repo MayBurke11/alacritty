@@ -702,6 +702,7 @@ pub enum TabAction {
     RunPopWord,
     TogglePin,
     ToggleMenu(usize),
+    MenuCommand(usize, usize),
 }
 
 /// Regex search state.
@@ -1112,7 +1113,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         self.display.tab_at_position(mouse.x, mouse.y)
     }
 
-    fn menu_at_mouse(&mut self) -> Option<usize> {
+    fn menu_at_mouse(&mut self) -> Option<(usize, Option<usize>)> {
         let mouse_x = self.mouse.x;
         let mouse_y = self.mouse.y;
         self.display.menu_at_position(mouse_x, mouse_y)
@@ -1170,6 +1171,13 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     fn toggle_menu(&mut self, idx: usize) {
         let _ = self.event_proxy.send_event(Event::new(
             EventType::Tab(TabAction::ToggleMenu(idx)),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_command(&mut self, idx: usize, sub_idx: usize) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuCommand(idx, sub_idx)),
             self.display.window.id(),
         ));
     }

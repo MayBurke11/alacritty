@@ -1284,6 +1284,19 @@ impl WindowContext {
                             };
                             self.dirty = true;
                         },
+                        TabAction::MenuCommand(idx, sub_idx) => {
+                            self.expanded_menu = None;
+                            if let Some(item) = self.config.menu.items.get(*idx) {
+                                if let Some(sub) = item.submenu.get(*sub_idx) {
+                                    if let Some(ref cmd) = sub.command {
+                                        let _ = std::process::Command::new(cmd.program())
+                                            .args(cmd.args())
+                                            .spawn();
+                                    }
+                                }
+                            }
+                            self.dirty = true;
+                        },
                     }
                     continue;
                 },
