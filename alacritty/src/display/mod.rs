@@ -1018,10 +1018,13 @@ impl Display {
 
         // Draw cursor.
         rects.extend(cursor.rects(&size_info, config.cursor.thickness()));
+        let cursor_rect_start = rects.len(); // track where cursor rects start
 
         // For scissored panes, skip UI elements (search, footer, tab, menu) and return early.
         if pane_clip.is_some() {
             if is_active_pane {
+                // Pop original cursor, push translated cursor.
+                rects.truncate(cursor_rect_start);
                 if let Some((col_offset, line_offset)) = pane_offset {
                     let cursor_point = cursor.point();
                     let translated_point = Point::new(
@@ -1029,18 +1032,16 @@ impl Display {
                         Column(cursor_point.column.0 + col_offset),
                     );
                     let offset_cursor = RenderableCursor::new(
-                        translated_point,
-                        cursor.shape(),
-                        cursor.color(),
-                        cursor.width(),
+                        translated_point, cursor.shape(), cursor.color(), cursor.width(),
                     );
                     rects.extend(offset_cursor.rects(&size_info, config.cursor.thickness()));
                 }
+            } else {
+                // Inactive pane: remove cursor rects.
+                rects.truncate(cursor_rect_start);
             }
             self.renderer.draw_rects(&size_info, &metrics, rects);
-            unsafe {
-                crate::gl::Disable(crate::gl::SCISSOR_TEST);
-            }
+            unsafe { crate::gl::Disable(crate::gl::SCISSOR_TEST); }
             return;
         }
 
@@ -1650,11 +1651,11 @@ impl Display {
     }
 
     #[inline(never)]
-    fn draw_tab_bar(&mut self, config: &UiConfig, tab_titles: &[(String, bool)], line: usize) {
+    pub fn draw_tab_bar(&mut self, config: &UiConfig, tab_titles: &[(String, bool)], line: usize) {
         self.draw_bar(config, tab_titles, line, config.tabs.tab_bar_edge);
     }
 
-    fn draw_bar(
+    pub fn draw_bar(
         &mut self,
         config: &UiConfig,
         titles: &[(String, bool)],

@@ -1358,6 +1358,7 @@ impl WindowContext {
             unsafe { crate::gl::Disable(crate::gl::SCISSOR_TEST); }
             display.draw_pane_dividers();
             display.present(scheduler);
+            display.present(scheduler);
         } else {
             let terminal_lock = if active_tab.active_pane == PaneId(0) {
                 Arc::clone(&active_tab.terminal)
@@ -1545,7 +1546,24 @@ impl WindowContext {
             };
             let is_active_tab = tab_index == self.active_tab;
             let tab = &mut self.tabs[tab_index];
-            let mut terminal = tab.terminal.lock();
+            let active_pid = tab.active_pane;
+
+            // Lock the active pane's terminal.
+            let (terminal_lock, notifier_ptr, cfg_fd, cfg_pid) = if active_pid == PaneId(0) {
+                let lock = tab.terminal.lock();
+                let np = &mut tab.notifier as *mut Notifier;
+                (lock, np, tab.master_fd, tab.shell_pid)
+            } else if let Some(pane) = tab.additional_panes.get(&active_pid) {
+                let lock = pane.terminal.lock();
+                let np = &pane.notifier as *const Notifier as *mut Notifier;
+                (lock, np, pane.master_fd, pane.shell_pid)
+            } else {
+                let lock = tab.terminal.lock();
+                let np = &mut tab.notifier as *mut Notifier;
+                (lock, np, tab.master_fd, tab.shell_pid)
+            };
+            let mut terminal = terminal_lock;
+            let notifier = unsafe { &mut *notifier_ptr };
 
             let context = ActionContext {
                 cursor_blink_timed_out: &mut tab.cursor_blink_timed_out,
@@ -1554,7 +1572,7 @@ impl WindowContext {
                 inline_search_state: &mut tab.inline_search_state,
                 search_state: &mut tab.search_state,
                 modifiers: &mut self.modifiers,
-                notifier: &mut tab.notifier,
+                notifier,
                 display: &mut self.display,
                 mouse: &mut self.mouse,
                 touch: &mut self.touch,
@@ -1568,9 +1586,9 @@ impl WindowContext {
                 run_editor_active: self.run_editor.is_some(),
                 is_active_tab,
                 #[cfg(not(windows))]
-                master_fd: tab.master_fd,
+                master_fd: cfg_fd,
                 #[cfg(not(windows))]
-                shell_pid: tab.shell_pid,
+                shell_pid: cfg_pid,
                 preserve_title: self.preserve_title,
                 menu_active: self.menu_state.active,
                 menu_toggle_pending: &mut self.menu_toggle_pending,
