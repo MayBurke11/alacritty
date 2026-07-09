@@ -1158,7 +1158,7 @@ impl Display {
                         && config.tabs.tab_bar_edge == TabBarEdge::Top)
                 },
                 crate::config::menu::MenuBarEdge::Bottom => {
-                    let base = size_info.screen_lines().saturating_sub(1) + search_lines + message_lines;
+                    let base = size_info.screen_lines() + search_lines + message_lines;
                     if config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Bottom
                     {
@@ -1214,7 +1214,14 @@ impl Display {
             // Submenu row.
             if let Some(idx) = expanded_menu {
                 if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
-                    let sub_y = y + height;
+                    let sub_y = match config.menu.menu_bar_edge {
+                        crate::config::menu::MenuBarEdge::Bottom => y - height,
+                        crate::config::menu::MenuBarEdge::Top => y + height,
+                    };
+                    let sub_line = match config.menu.menu_bar_edge {
+                        crate::config::menu::MenuBarEdge::Bottom => menu_line.saturating_sub(1),
+                        crate::config::menu::MenuBarEdge::Top => menu_line + 1,
+                    };
                     let mut sub_col = 0usize;
                     for (sidx, sub) in config.menu.items[idx].submenu.iter().enumerate() {
                         let label = format!(" {} ", sub.label);
