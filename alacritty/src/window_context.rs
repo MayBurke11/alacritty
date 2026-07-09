@@ -41,8 +41,8 @@ use crate::daemon::foreground_process_path;
 use crate::display::Display;
 use crate::display::window::Window;
 use crate::event::{
-    ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuSelection, MenuState, Mouse,
-    SearchState, TabAction, TabId, TouchPurpose,
+    ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuOp, MenuSelection,
+    MenuState, Mouse, SearchState, TabAction, TabId, TouchPurpose,
 };
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
@@ -268,6 +268,10 @@ pub struct WindowContext {
     run_editor: Option<String>,
     /// Modal menu state.
     menu_state: MenuState,
+    /// Pending menu toggle from keyboard handler (synchronous, no frame delay).
+    menu_toggle_pending: bool,
+    /// Pending synchronous menu operation (no frame delay).
+    menu_op_pending: Vec<MenuOp>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -1102,6 +1106,8 @@ impl WindowContext {
             tab_title_editor: None,
             run_editor: None,
             menu_state: MenuState::default(),
+            menu_toggle_pending: false,
+            menu_op_pending: Vec::new(),
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
@@ -1469,6 +1475,8 @@ impl WindowContext {
                 shell_pid: tab.shell_pid,
                 preserve_title: self.preserve_title,
                 menu_active: self.menu_state.active,
+                menu_toggle_pending: &mut self.menu_toggle_pending,
+                menu_op_pending: &mut self.menu_op_pending,
                 config: &*tab.config,
                 event_proxy: &self.event_proxy,
                 #[cfg(target_os = "macos")]
@@ -1478,6 +1486,67 @@ impl WindowContext {
             };
             let mut processor = input::Processor::new(context);
             processor.handle_event(event);
+        }
+
+        // Synchronous menu toggle (no frame delay).
+        if std::mem::take(&mut self.menu_toggle_pending) {
+            self.menu_state.active = !self.menu_state.active;
+            if !self.menu_state.active {
+                self.menu_state.path.clear();
+                self.menu_state.list_mode = None;
+                self.menu_state.focus = 0;
+            }
+            self.dirty = true;
+        }
+
+        // Synchronous menu operations (no frame delay).
+        for op in std::mem::take(&mut self.menu_op_pending) {
+            match op {
+                MenuOp::FocusLeft => {
+                    if self.menu_state.focus > 0 {
+                        self.menu_state.focus -= 1;
+                    }
+                    self.dirty = true;
+                },
+                MenuOp::FocusRight => {
+                    let count = self.menu_state.item_count(&self.config.menu);
+                    if self.menu_state.focus + 1 <= count {
+                        self.menu_state.focus += 1;
+                    }
+                    self.dirty = true;
+                },
+                MenuOp::Select => {
+                    let sel = self.menu_state.select(&self.config.menu);
+                    self.handle_menu_selection(sel);
+                    self.dirty = true;
+                },
+                MenuOp::Back => {
+                    self.menu_state.back();
+                    self.dirty = true;
+                },
+                MenuOp::Click(idx) => {
+                    self.menu_state.focus = idx;
+                    let sel = self.menu_state.select(&self.config.menu);
+                    self.handle_menu_selection(sel);
+                    self.dirty = true;
+                },
+                MenuOp::LetterKey(ch) => {
+                    let labels = self.menu_state.bar_labels(&self.config.menu);
+                    let ch_lower: char = ch.to_lowercase().next().unwrap_or(ch);
+                    for (i, (label, _)) in labels.iter().enumerate() {
+                        if i == 0 { continue; }
+                        let first_char = label.chars().next()
+                            .map(|c| c.to_lowercase().next().unwrap_or(c));
+                        if first_char == Some(ch_lower) {
+                            self.menu_state.focus = i;
+                            let sel = self.menu_state.select(&self.config.menu);
+                            self.handle_menu_selection(sel);
+                            break;
+                        }
+                    }
+                    self.dirty = true;
+                },
+            }
         }
 
         self.sync_focus();

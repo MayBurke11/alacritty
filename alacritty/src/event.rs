@@ -719,6 +719,17 @@ pub enum ListMode {
     Sessions(Vec<String>),
 }
 
+/// Pending synchronous menu operation (no frame delay).
+#[derive(Clone, Debug)]
+pub enum MenuOp {
+    FocusLeft,
+    FocusRight,
+    Select,
+    Back,
+    Click(usize),
+    LetterKey(char),
+}
+
 /// Modal menu state.
 #[derive(Clone, Debug, Default)]
 pub struct MenuState {
@@ -1032,6 +1043,8 @@ pub struct ActionContext<'a, N, T> {
     pub occluded: &'a mut bool,
     pub preserve_title: bool,
     pub menu_active: bool,
+    pub menu_toggle_pending: &'a mut bool,
+    pub menu_op_pending: &'a mut Vec<MenuOp>,
     #[cfg(not(windows))]
     pub master_fd: RawFd,
     #[cfg(not(windows))]
@@ -1377,52 +1390,31 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn toggle_locked(&mut self) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::ToggleLocked),
-            self.display.window.id(),
-        ));
+        *self.menu_toggle_pending = true;
     }
 
     fn menu_focus_left(&mut self) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuFocusLeft),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::FocusLeft);
     }
 
     fn menu_focus_right(&mut self) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuFocusRight),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::FocusRight);
     }
 
     fn menu_select(&mut self) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuSelect),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::Select);
     }
 
     fn menu_back(&mut self) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuBack),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::Back);
     }
 
     fn menu_click(&mut self, idx: usize) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuClick(idx)),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::Click(idx));
     }
 
     fn menu_letter_key(&mut self, ch: char) {
-        let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuLetterKey(ch)),
-            self.display.window.id(),
-        ));
+        self.menu_op_pending.push(MenuOp::LetterKey(ch));
     }
 
     fn confirm_run(&mut self, no_switch: bool) {
