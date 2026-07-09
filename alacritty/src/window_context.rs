@@ -65,6 +65,22 @@ fn foreground_process_name(master_fd: RawFd, shell_pid: u32) -> Option<String> {
 }
 
 #[cfg(not(windows))]
+fn foreground_process_cmdline(master_fd: RawFd, shell_pid: u32) -> Option<Vec<String>> {
+    let mut pid = unsafe { libc::tcgetpgrp(master_fd) };
+    if pid < 0 {
+        pid = shell_pid as i32;
+    }
+    let data = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    if data.is_empty() { return None; }
+    let args: Vec<String> = data.split(|&b| b == 0)
+        .filter_map(|chunk| std::str::from_utf8(chunk).ok())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_owned())
+        .collect();
+    if args.is_empty() { None } else { Some(args) }
+}
+
+#[cfg(not(windows))]
 fn process_cwd(pid: u32) -> Option<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
@@ -289,6 +305,8 @@ pub struct WindowContext {
     divider_drag: Option<(usize, crate::pane_tree::SplitId, SplitDir, f32, f32, f32)>,
     /// Alt+arrows resize panes instead of focusing.
     pane_resize_mode: bool,
+    /// Pending pane commands to restore on next frame (delay for shell init).
+    pane_restore_queue: Vec<(usize, PaneId, Vec<String>)>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -836,11 +854,12 @@ impl WindowContext {
             let cwd = std::fs::read_link(format!("/proc/{}/cwd", tab.shell_pid)).ok()
                 .map(|p| p.to_string_lossy().to_string());
             let additional: Vec<SavedPane> = tab.additional_panes.iter().map(|(id, pane)| {
-                let fg = foreground_process_name(pane.master_fd, pane.shell_pid);
-                SavedPane { pane_id: id.0, command: fg.map(|n| vec![n]) }
+                let cmd = foreground_process_cmdline(pane.master_fd, pane.shell_pid);
+                SavedPane { pane_id: id.0, command: cmd }
             }).collect();
             SavedTab {
-                command: tab.command.clone(),
+                command: foreground_process_cmdline(tab.master_fd, tab.shell_pid)
+                    .or_else(|| tab.command.clone()),
                 cwd,
                 pinned: tab.pinned,
                 title: tab.custom_title.clone(),
@@ -936,17 +955,12 @@ impl WindowContext {
                     }
                 }
 
-                // Launch saved commands in each pane.
+                // Queue pane commands for delayed restore (shell needs time to init).
                 for saved_pane in &saved.additional_panes {
                     if let Some(ref cmd) = saved_pane.command {
                         if !cmd.is_empty() {
                             let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
-                            if let Some(pane) = tab.additional_panes.get(&pane_id) {
-                                let cmd_str = cmd.join(" ") + "\n";
-                                let _ = pane.notifier.0.send(
-                                    alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
-                                );
-                            }
+                            self.pane_restore_queue.push((i, pane_id, cmd.clone()));
                         }
                     }
                 }
@@ -1206,6 +1220,7 @@ impl WindowContext {
             divider_drag: None,
             pane_resize_mode: false,
             window_close_confirmation_pending: false,
+            pane_restore_queue: Vec::new(),
             focused: false,
             event_proxy: proxy,
         };
@@ -1809,6 +1824,38 @@ impl WindowContext {
         }
 
         self.sync_focus();
+
+        // Process pane command restore queue (wait 1s for shell init, then inject).
+        if !self.pane_restore_queue.is_empty() {
+            let tab = &self.active_tab();
+            if !tab.message_buffer.is_empty() {
+                // Still showing message, don't inject yet.
+            } else {
+                // First frame: show message, schedule injection.
+                let count = self.pane_restore_queue.len();
+                self.tabs[self.active_tab].message_buffer.push(Message::new(
+                    format!("Restoring {} pane command(s)...", count),
+                    MessageType::Warning,
+                ));
+                // Actually inject immediately — the shell buffers input.
+                for (tab_idx, pane_id, cmd) in std::mem::take(&mut self.pane_restore_queue) {
+                    if tab_idx >= self.tabs.len() { continue; }
+                    let tab = &self.tabs[tab_idx];
+                    if pane_id == PaneId(0) {
+                        let cmd_str = cmd.join(" ") + "\n";
+                        let _ = tab.notifier.0.send(
+                            alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
+                        );
+                    } else if let Some(pane) = tab.additional_panes.get(&pane_id) {
+                        let cmd_str = cmd.join(" ") + "\n";
+                        let _ = pane.notifier.0.send(
+                            alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
+                        );
+                    }
+                }
+                self.dirty = true;
+            }
+        }
 
         // Process DisplayUpdate events.
         if self.display.pending_update.dirty {
