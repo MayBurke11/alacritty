@@ -16,6 +16,7 @@ pub struct PaneState {
     pub pane_id: PaneId,
     pub terminal: Arc<FairMutex<Term<EventProxy>>>,
     pub notifier: Notifier,
+    pub command: Option<Vec<String>>,
     #[cfg(not(windows))]
     pub master_fd: RawFd,
     #[cfg(not(windows))]
@@ -27,6 +28,7 @@ impl PaneState {
         pane_id: PaneId,
         terminal: Arc<FairMutex<Term<EventProxy>>>,
         notifier: Notifier,
+        command: Option<Vec<String>>,
         #[cfg(not(windows))] master_fd: RawFd,
         #[cfg(not(windows))] shell_pid: u32,
     ) -> Self {
@@ -34,6 +36,7 @@ impl PaneState {
             pane_id,
             terminal,
             notifier,
+            command,
             #[cfg(not(windows))]
             master_fd,
             #[cfg(not(windows))]

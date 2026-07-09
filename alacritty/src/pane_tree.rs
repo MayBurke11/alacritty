@@ -1,18 +1,21 @@
 #![allow(dead_code)]
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PaneId(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SplitId(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitDir {
     Horizontal,
     Vertical,
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -27,6 +30,7 @@ impl Rect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum PaneNode {
     Leaf { pane_id: PaneId, last_size: (u32, u32) },
     Split { split_id: SplitId, direction: SplitDir, ratio: f32, a: Box<PaneNode>, b: Box<PaneNode> },
@@ -34,6 +38,7 @@ pub enum PaneNode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
+#[derive(Serialize, Deserialize)]
 pub enum FocusDir {
     Left,
     Right,
@@ -42,6 +47,7 @@ pub enum FocusDir {
 }
 
 #[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 enum SearchResult {
     NotFound,
     Found,
@@ -49,10 +55,17 @@ enum SearchResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum RemoveResult {
     CollapseToSibling(PaneNode),
     TreeEmptied,
     NotFound,
+}
+
+impl Default for PaneNode {
+    fn default() -> Self {
+        PaneNode::Leaf { pane_id: PaneId(0), last_size: (80, 24) }
+    }
 }
 
 impl PaneNode {

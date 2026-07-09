@@ -812,11 +812,20 @@ impl WindowContext {
     pub fn tabs_save_json(&self) -> String {
         use serde::Serialize;
         #[derive(Serialize)]
+        struct SavedPane {
+            pane_id: u64,
+            command: Option<Vec<String>>,
+        }
+        #[derive(Serialize)]
         struct SavedTab {
             command: Option<Vec<String>>,
             cwd: Option<String>,
             pinned: bool,
             title: Option<String>,
+            active_pane: u64,
+            zoomed_pane: Option<u64>,
+            pane_tree: crate::pane_tree::PaneNode,
+            additional_panes: Vec<SavedPane>,
         }
         #[derive(Serialize)]
         struct Session {
@@ -826,11 +835,18 @@ impl WindowContext {
         let tabs: Vec<SavedTab> = self.tabs.iter().map(|tab| {
             let cwd = std::fs::read_link(format!("/proc/{}/cwd", tab.shell_pid)).ok()
                 .map(|p| p.to_string_lossy().to_string());
+            let additional: Vec<SavedPane> = tab.additional_panes.iter().map(|(id, pane)| {
+                SavedPane { pane_id: id.0, command: pane.command.clone() }
+            }).collect();
             SavedTab {
                 command: tab.command.clone(),
                 cwd,
                 pinned: tab.pinned,
                 title: tab.custom_title.clone(),
+                active_pane: tab.active_pane.0,
+                zoomed_pane: tab.zoomed_pane.map(|id| id.0),
+                pane_tree: tab.pane_tree.clone(),
+                additional_panes: additional,
             }
         }).collect();
         let session = Session { active_tab: self.active_tab, tabs };
@@ -841,12 +857,25 @@ impl WindowContext {
     pub fn restore_tabs(&mut self, json: &[u8]) -> Result<(), Box<dyn Error>> {
         use serde::Deserialize;
         #[derive(Deserialize)]
+        struct SavedPane {
+            pane_id: u64,
+            command: Option<Vec<String>>,
+        }
+        #[derive(Deserialize)]
         struct SavedTab {
             command: Option<Vec<String>>,
             cwd: Option<String>,
             pinned: bool,
             #[serde(default)]
             title: Option<String>,
+            #[serde(default)]
+            active_pane: u64,
+            #[serde(default)]
+            zoomed_pane: Option<u64>,
+            #[serde(default)]
+            pane_tree: crate::pane_tree::PaneNode,
+            #[serde(default)]
+            additional_panes: Vec<SavedPane>,
         }
         #[derive(Deserialize)]
         struct Session {
@@ -856,25 +885,17 @@ impl WindowContext {
         let session: Session = serde_json::from_slice(json)?;
         if session.tabs.is_empty() { return Ok(()); }
 
-        // Create all tabs from session. First tab reuses the PaneId 0 slot.
         for (i, saved) in session.tabs.iter().enumerate() {
             let wd = saved.cwd.as_ref().and_then(|c| std::path::PathBuf::from(c).canonicalize().ok());
             if i == 0 {
-                // Replace the first tab (close it, then create new one in its slot).
                 self.tabs[0].terminal.lock().exit();
                 self.tabs.remove(0);
                 let _ = self.create_tab_inner(
-                    saved.command.clone(),
-                    wd.map(|p| p),
-                    true,
-                    None,
+                    saved.command.clone(), wd.map(|p| p), true, None,
                 );
             } else {
                 let _ = self.create_tab_inner(
-                    saved.command.clone(),
-                    wd.map(|p| p),
-                    true,
-                    None,
+                    saved.command.clone(), wd.map(|p| p), true, None,
                 );
             }
             if saved.pinned && i < self.tabs.len() {
@@ -883,6 +904,35 @@ impl WindowContext {
             if let Some(ref title) = saved.title {
                 if !title.is_empty() && i < self.tabs.len() {
                     self.tabs[i].custom_title = Some(title.clone());
+                }
+            }
+
+            // Restore pane tree.
+            if saved.pane_tree.leaf_ids().len() > 1 {
+                let tab = &mut self.tabs[i];
+                tab.pane_tree = saved.pane_tree.clone();
+                tab.next_pane_id = saved.additional_panes.iter()
+                    .map(|p| p.pane_id).max().unwrap_or(0) + 1;
+                tab.active_pane = crate::pane_tree::PaneId(saved.active_pane);
+                tab.zoomed_pane = saved.zoomed_pane.map(crate::pane_tree::PaneId);
+
+                // Create additional pane terminals.
+                let config = Rc::clone(&self.config);
+                let window_id = self.display.window.id();
+                let proxy = self.event_proxy.clone();
+                let tab_id = tab.id;
+                let size_info = self.display.size_info;
+
+                for saved_pane in &saved.additional_panes {
+                    if saved_pane.pane_id == 0 { continue; }
+                    let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
+                    if let Ok(pane_state) = Self::create_pane(
+                        &config, window_id, size_info, &proxy, tab_id, pane_id,
+                    ) {
+                        let mut ps = pane_state;
+                        ps.command = saved_pane.command.clone();
+                        tab.additional_panes.insert(pane_id, ps);
+                    }
                 }
             }
         }
@@ -2011,7 +2061,7 @@ impl WindowContext {
         let loop_tx = event_loop.channel();
         let _io_thread = event_loop.spawn();
         if config.cursor.style().blinking { event_proxy.send_event(TerminalEvent::CursorBlinkingChange.into()); }
-        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), master_fd, shell_pid))
+        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), None, master_fd, shell_pid))
     }
 
     fn close_pane(&mut self) {
