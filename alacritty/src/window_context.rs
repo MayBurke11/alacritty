@@ -934,6 +934,21 @@ impl WindowContext {
                         tab.additional_panes.insert(pane_id, ps);
                     }
                 }
+
+                // Launch saved commands in each pane.
+                for saved_pane in &saved.additional_panes {
+                    if let Some(ref cmd) = saved_pane.command {
+                        if !cmd.is_empty() {
+                            let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
+                            if let Some(pane) = tab.additional_panes.get(&pane_id) {
+                                let cmd_str = cmd.join(" ") + "\n";
+                                let _ = pane.notifier.0.send(
+                                    alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
 
