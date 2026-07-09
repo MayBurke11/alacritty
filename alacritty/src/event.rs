@@ -427,6 +427,13 @@ impl ApplicationHandler<Event> for Processor {
                 }
             },
             #[cfg(unix)]
+            (EventType::PinTabIPC(index), _) => {
+                for window_context in self.windows.values_mut() {
+                    window_context.toggle_pin_at(index.saturating_sub(1));
+                    break;
+                }
+            },
+            #[cfg(unix)]
             (EventType::QuickRunIPC(options), _) => {
                 for window_context in self.windows.values_mut() {
                     window_context.quick_run_ipc(options.clone());
@@ -623,6 +630,8 @@ pub enum EventType {
     #[cfg(unix)]
     CloseTabIPC(usize),
     #[cfg(unix)]
+    PinTabIPC(usize),
+    #[cfg(unix)]
     QuickRunIPC(TabQuickRun),
     BlinkCursor,
     BlinkCursorTimeout,
@@ -664,6 +673,7 @@ pub enum TabAction {
     CancelRun,
     RunInput(char),
     RunPopWord,
+    TogglePin,
 }
 
 /// Regex search state.
@@ -1114,6 +1124,13 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         let _ = self
             .event_proxy
             .send_event(Event::new(EventType::Tab(TabAction::Run), self.display.window.id()));
+    }
+
+    fn toggle_pin_tab(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::TogglePin),
+            self.display.window.id(),
+        ));
     }
 
     fn confirm_run(&mut self, no_switch: bool) {
@@ -2219,6 +2236,7 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 | EventType::ListTabsIPC(_)
                 | EventType::SelectTabIPC(_)
                 | EventType::CloseTabIPC(_)
+                | EventType::PinTabIPC(_)
                 | EventType::QuickRunIPC(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)

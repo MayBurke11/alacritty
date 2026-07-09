@@ -262,6 +262,9 @@ pub enum Action {
     /// QuickRun: inline command runner for new tab.
     QuickRun,
 
+    /// Toggle pin on active tab.
+    TogglePin,
+
     /// No action.
     None,
 }
@@ -583,6 +586,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
+        "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
     )
 }
 

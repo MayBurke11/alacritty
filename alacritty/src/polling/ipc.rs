@@ -101,6 +101,10 @@ impl IpcListener {
                 let event = Event::new(EventType::CloseTabIPC(options.index), None);
                 let _ = self.event_proxy.send_event(event);
             },
+            SocketMessage::PinTab(options) => {
+                let event = Event::new(EventType::PinTabIPC(options.index), None);
+                let _ = self.event_proxy.send_event(event);
+            },
             SocketMessage::QuickRun(options) => {
                 let event = Event::new(EventType::QuickRunIPC(options), None);
                 let _ = self.event_proxy.send_event(event);

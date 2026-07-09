@@ -134,6 +134,7 @@ pub trait ActionContext<T: EventListener> {
         false
     }
     fn quick_run(&mut self) {}
+    fn toggle_pin_tab(&mut self) {}
     fn confirm_run(&mut self, _no_switch: bool) {}
     fn cancel_run(&mut self) {}
     fn run_editor_input(&mut self, _c: char) {}
@@ -514,6 +515,7 @@ impl<T: EventListener> Execute<T> for Action {
             #[cfg(not(target_os = "macos"))]
             Action::SetTabTitle => ctx.set_tab_title(),
             Action::QuickRun => ctx.quick_run(),
+            Action::TogglePin => ctx.toggle_pin_tab(),
             _ => (),
         }
     }

@@ -92,6 +92,7 @@ struct TerminalTab {
     terminal: Arc<FairMutex<Term<EventProxy>>>,
     notifier: Notifier,
     config: Rc<UiConfig>,
+    pinned: bool,
     terminal_title: Option<String>,
     detected_title: String,
     custom_title: Option<String>,
@@ -155,6 +156,7 @@ impl TerminalTab {
             #[cfg(not(windows))]
             shell_pid,
             config: config.clone(),
+            pinned: false,
             notifier: Notifier(loop_tx),
             terminal_title: None,
             detected_title: Self::detected_title(
@@ -475,7 +477,8 @@ impl WindowContext {
             .replace("{index}", &(index + 1).to_string())
             .replace("{num_windows}", "1");
 
-        if rendered.is_empty() { title.to_owned() } else { rendered }
+        let title = if rendered.is_empty() { title.to_owned() } else { rendered };
+        if tab.pinned { format!("*{}", title) } else { title }
     }
 
     fn sync_focus(&mut self) {
@@ -625,11 +628,20 @@ impl WindowContext {
 
     /// Close a tab by index via IPC.
     pub fn close_tab_at(&mut self, index: usize) {
-        if index >= self.tabs.len() {
+        if index >= self.tabs.len() || self.tabs[index].pinned {
             return;
         }
         self.cancel_window_close_confirmation();
         self.tabs[index].terminal.lock().exit();
+    }
+
+    /// Toggle pin on a tab by index.
+    pub fn toggle_pin_at(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        self.tabs[index].pinned = !self.tabs[index].pinned;
+        self.dirty = true;
     }
 
     /// Select a tab by index via IPC.
@@ -646,6 +658,7 @@ impl WindowContext {
             id: u64,
             title: String,
             active: bool,
+            pinned: bool,
         }
         let tabs: Vec<TabInfo> = self
             .tabs
@@ -656,6 +669,7 @@ impl WindowContext {
                 id: tab.id.0,
                 title: tab.display_title().to_owned(),
                 active: i == self.active_tab,
+                pinned: tab.pinned,
             })
             .collect();
         serde_json::to_string(&tabs).unwrap_or_default()
@@ -663,6 +677,9 @@ impl WindowContext {
 
     fn close_active_tab(&mut self) {
         self.cancel_window_close_confirmation();
+        if self.active_tab().pinned && self.tabs.len() > 1 {
+            return;
+        }
         let tab = self.active_tab_mut();
         tab.terminal.lock().exit();
     }
@@ -1159,6 +1176,7 @@ impl WindowContext {
                         TabAction::CancelRun => self.cancel_run_editor(),
                         TabAction::RunInput(c) => self.run_editor_input(*c),
                         TabAction::RunPopWord => self.run_editor_pop_word(),
+                        TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
                     }
                     continue;
                 },

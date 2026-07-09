@@ -276,6 +276,9 @@ pub enum SocketMessage {
     /// Close a tab by index in the target window.
     CloseTab(TabSelect),
 
+    /// Toggle pin on a tab by index.
+    PinTab(TabSelect),
+
     /// QuickRun: inline command runner for new tab.
     QuickRun(TabQuickRun),
 }
