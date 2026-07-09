@@ -1953,14 +1953,16 @@ impl WindowContext {
         let leaves_before = self.active_tab().pane_tree.leaf_ids().len();
         if leaves_before <= 1 { return; }
         let pane_to_close = self.active_tab().active_pane;
+        // Find nearest sibling to focus after close.
+        let leaves = self.active_tab().pane_tree.leaf_ids();
+        let close_pos = leaves.iter().position(|&id| id == pane_to_close).unwrap_or(0);
+        let sibling = if close_pos > 0 { leaves[close_pos - 1] } else { leaves[1] };
         let result = self.active_tab_mut().pane_tree.remove(pane_to_close);
         if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
             self.active_tab_mut().pane_tree = replacement;
         }
         self.active_tab_mut().additional_panes.remove(&pane_to_close);
-        if let Some(&first) = self.active_tab().pane_tree.leaf_ids().first() {
-            self.active_tab_mut().active_pane = first;
-        }
+        self.active_tab_mut().active_pane = sibling;
         // Resize remaining pane(s) to full viewport.
         let remaining = self.active_tab().pane_tree.leaf_ids().len();
         if remaining == 1 {
@@ -2082,14 +2084,18 @@ impl WindowContext {
                 self.tabs[tab_idx].active_pane = pid;
                 let leaves_before = self.tabs[tab_idx].pane_tree.leaf_ids().len();
                 if leaves_before > 1 {
+                    // Find nearest sibling to focus after removal.
+                    let sibling = {
+                        let leaves = self.tabs[tab_idx].pane_tree.leaf_ids();
+                        let close_pos = leaves.iter().position(|&id| id == pid).unwrap_or(0);
+                        if close_pos > 0 { leaves[close_pos - 1] } else { leaves[1] }
+                    };
                     let result = self.tabs[tab_idx].pane_tree.remove(pid);
                     if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
                         self.tabs[tab_idx].pane_tree = replacement;
                     }
                     self.tabs[tab_idx].additional_panes.remove(&pid);
-                    if let Some(&first) = self.tabs[tab_idx].pane_tree.leaf_ids().first() {
-                        self.tabs[tab_idx].active_pane = first;
-                    }
+                    self.tabs[tab_idx].active_pane = sibling;
                     // If only one pane remains, resize it to full viewport.
                     if self.tabs[tab_idx].pane_tree.leaf_ids().len() == 1 {
                         let size_info = self.display.size_info;
