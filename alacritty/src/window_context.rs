@@ -1356,8 +1356,50 @@ impl WindowContext {
             }
 
             unsafe { crate::gl::Disable(crate::gl::SCISSOR_TEST); }
+
+            // Draw tab bar and menu bar on top of panes.
+            let tab_title_editor_offset =
+                usize::from(self.tab_title_editor.is_some() || self.run_editor.is_some());
+            let search_lines =
+                usize::from(active_tab.search_state.regex().is_some()) + tab_title_editor_offset;
+            let message_lines = active_tab.message_buffer.message()
+                .map_or(0, |m| m.text(&display.size_info).len());
+
+            if tab_config.tabs.display_tab_bar(tab_titles.len()) {
+                let tab_line = match tab_config.tabs.tab_bar_edge {
+                    TabBarEdge::Top => 0,
+                    TabBarEdge::Bottom => display.size_info.screen_lines() + search_lines + message_lines,
+                };
+                display.draw_tab_bar(&tab_config, &tab_titles.iter().map(|(t, a)| (t.clone(), *a)).collect::<Vec<_>>(), tab_line);
+            }
+
+            if !tab_config.menu.items.is_empty() {
+                let menu_edge = match tab_config.menu.menu_bar_edge {
+                    crate::config::menu::MenuBarEdge::Top => TabBarEdge::Top,
+                    crate::config::menu::MenuBarEdge::Bottom => TabBarEdge::Bottom,
+                };
+                let menu_line = match menu_edge {
+                    TabBarEdge::Top => {
+                        usize::from(tab_config.tabs.display_tab_bar(tab_titles.len())
+                            && tab_config.tabs.tab_bar_edge == TabBarEdge::Top)
+                    },
+                    TabBarEdge::Bottom => {
+                        let base = display.size_info.screen_lines() + search_lines + message_lines;
+                        if tab_config.tabs.display_tab_bar(tab_titles.len())
+                            && tab_config.tabs.tab_bar_edge == TabBarEdge::Bottom
+                        {
+                            base + 1
+                        } else {
+                            base
+                        }
+                    },
+                };
+                let bar_labels = self.menu_state.bar_labels(&tab_config.menu);
+                let labels: Vec<(String, bool)> = bar_labels.iter().map(|(l, f)| (l.clone(), *f)).collect();
+                display.draw_bar(&tab_config, &labels, menu_line, menu_edge);
+            }
+
             display.draw_pane_dividers();
-            display.present(scheduler);
             display.present(scheduler);
         } else {
             let terminal_lock = if active_tab.active_pane == PaneId(0) {
