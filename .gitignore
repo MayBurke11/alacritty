@@ -9,3 +9,4 @@ scripts/bun.lock
 scripts/package.json
 scripts/*.tar.gz
 scripts/ImageMagick-*/
+.helix/

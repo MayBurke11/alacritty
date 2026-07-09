@@ -1,5 +1,0 @@
-"/home/dryamov/.config/helix/languages.toml"
-"/home/dryamov/Repositories/helix/languages.toml"
-"/home/dryamov/Repositories/alacritty/ALACRITTY-BEST-EVER.md"
-"/home/dryamov/Repositories/alacritty/scripts/e2e-tabs-test.sh"
-"/home/dryamov/Repositories/alacritty/Cargo.toml"
