@@ -150,11 +150,19 @@ impl FrameDamage {
     /// Damage line for the given frame.
     #[inline]
     pub fn damage_line(&mut self, damage: LineDamageBounds) {
+        if damage.line >= self.lines.len() {
+            log::warn!("damage_line OOB: line={} >= len={}, marking full damage", damage.line, self.lines.len());
+            self.full = true;
+            return;
+        }
         self.lines[damage.line].expand(damage.left, damage.right);
     }
 
     #[inline]
     pub fn damage_point(&mut self, point: Point<usize>) {
+        if point.line >= self.lines.len() {
+            return;
+        }
         self.lines[point.line].expand(point.column.0, point.column.0);
     }
 
