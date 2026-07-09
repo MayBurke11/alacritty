@@ -784,7 +784,12 @@ pub enum MenuSelection {
 
 impl MenuState {
     /// Get the labels for the current bar level.
-    pub fn bar_labels(&self, menu: &crate::config::menu::Menu) -> Vec<(String, bool)> {
+    pub fn bar_labels(
+        &self,
+        menu: &crate::config::menu::Menu,
+        pane_count: usize,
+        resize_mode: bool,
+    ) -> Vec<(String, bool)> {
         let mut labels: Vec<(String, bool)> = Vec::new();
 
         // List mode: show mode indicator + dynamic list items.
@@ -817,6 +822,16 @@ impl MenuState {
                 let focused = self.active && self.focus == i + 1;
                 labels.push((item.label.clone(), focused));
             }
+        }
+
+        // Status indicator: show current mode hint for Alt+arrows.
+        if pane_count > 1 {
+            let status = if resize_mode {
+                " ALT+RESIZE "
+            } else {
+                " ALT+FOCUS "
+            };
+            labels.push((status.to_string(), false));
         }
 
         labels

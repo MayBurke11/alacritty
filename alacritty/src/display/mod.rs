@@ -1235,7 +1235,7 @@ impl Display {
                 },
             };
 
-            let bar_labels = menu_state.bar_labels(&config.menu);
+            let bar_labels = menu_state.bar_labels(&config.menu, 0, false);
 
             let old_count = self.tab_hit_boxes.len();
             self.draw_bar(config, &bar_labels, menu_line, menu_edge);

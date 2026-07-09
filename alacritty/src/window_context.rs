@@ -1405,7 +1405,8 @@ impl WindowContext {
                         }
                     },
                 };
-                let bar_labels = self.menu_state.bar_labels(&tab_config.menu);
+                let pc = active_tab.pane_tree.leaf_ids().len();
+                let bar_labels = self.menu_state.bar_labels(&tab_config.menu, pc, self.pane_resize_mode);
                 let labels: Vec<(String, bool)> = bar_labels.iter().map(|(l, f)| (l.clone(), *f)).collect();
                 display.draw_bar(&tab_config, &labels, menu_line, menu_edge);
             }
@@ -1566,7 +1567,7 @@ impl WindowContext {
                             self.dirty = true;
                         },
                         TabAction::MenuLetterKey(ch) => {
-                            let labels = self.menu_state.bar_labels(&self.config.menu);
+                            let labels = self.menu_state.bar_labels(&self.config.menu, self.active_tab().pane_tree.leaf_ids().len(), self.pane_resize_mode);
                             let ch_lower: char = ch.to_lowercase().next().unwrap_or(*ch);
                             for (i, (label, _)) in labels.iter().enumerate() {
                                 if i == 0 { continue; }
@@ -1678,7 +1679,7 @@ impl WindowContext {
             log::debug!("[menu-sync] op=ToggleLocked AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
                 self.menu_state.active, self.menu_state.path,
                 self.menu_state.list_mode.is_some(), self.menu_state.focus,
-                self.menu_state.bar_labels(&self.config.menu).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+                self.menu_state.bar_labels(&self.config.menu, self.active_tab().pane_tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
             self.dirty = true;
         }
 
@@ -1717,7 +1718,7 @@ impl WindowContext {
                     self.dirty = true;
                 },
                 MenuOp::LetterKey(ch) => {
-                    let labels = self.menu_state.bar_labels(&self.config.menu);
+                    let labels = self.menu_state.bar_labels(&self.config.menu, self.active_tab().pane_tree.leaf_ids().len(), self.pane_resize_mode);
                     let ch_lower: char = ch.to_lowercase().next().unwrap_or(ch);
                     for (i, (label, _)) in labels.iter().enumerate() {
                         if i == 0 { continue; }
@@ -1738,7 +1739,7 @@ impl WindowContext {
             log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
                 op, self.menu_state.active, self.menu_state.path,
                 self.menu_state.list_mode.is_some(), self.menu_state.focus,
-                self.menu_state.bar_labels(&self.config.menu).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+                self.menu_state.bar_labels(&self.config.menu, self.active_tab().pane_tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
         }
 
         self.sync_focus();
