@@ -105,6 +105,10 @@ impl IpcListener {
                 let event = Event::new(EventType::PinTabIPC(options.index), None);
                 let _ = self.event_proxy.send_event(event);
             },
+            SocketMessage::SaveTabs(_options) => {
+                let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream)), None);
+                let _ = self.event_proxy.send_event(event);
+            },
             SocketMessage::QuickRun(options) => {
                 let event = Event::new(EventType::QuickRunIPC(options), None);
                 let _ = self.event_proxy.send_event(event);
@@ -155,6 +159,11 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
         },
         // Write tab list to STDOUT.
         (SocketMessage::ListTabs(..), SocketReply::ListTabs(tabs)) => {
+            println!("{tabs}");
+            Ok(())
+        },
+        // Write tab list to STDOUT.
+        (SocketMessage::SaveTabs(..), SocketReply::SaveTabs(tabs)) => {
             println!("{tabs}");
             Ok(())
         },
@@ -265,4 +274,5 @@ pub fn socket_prefix() -> String {
 pub enum SocketReply {
     GetConfig(String),
     ListTabs(String),
+    SaveTabs(String),
 }

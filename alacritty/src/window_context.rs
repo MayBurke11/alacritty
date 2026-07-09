@@ -93,6 +93,8 @@ struct TerminalTab {
     notifier: Notifier,
     config: Rc<UiConfig>,
     pinned: bool,
+    /// Command that was used to create this tab, for save/restore.
+    command: Option<Vec<String>>,
     terminal_title: Option<String>,
     detected_title: String,
     custom_title: Option<String>,
@@ -157,6 +159,7 @@ impl TerminalTab {
             shell_pid,
             config: config.clone(),
             pinned: false,
+            command: None,
             notifier: Notifier(loop_tx),
             terminal_title: None,
             detected_title: Self::detected_title(
@@ -557,14 +560,16 @@ impl WindowContext {
             options.terminal_options.working_directory = Some(wd.clone());
         } else {
             #[cfg(not(windows))]
-            if let Some(wd) =
-                process_cwd(self.active_tab().shell_pid).filter(|path| path.is_dir()).or_else(|| {
-                    foreground_process_path(self.active_tab().master_fd, self.active_tab().shell_pid)
-                        .ok()
-                        .filter(|path| path.is_dir())
-                })
-            {
-                options.terminal_options.working_directory = Some(wd);
+            if !self.tabs.is_empty() {
+                if let Some(wd) =
+                    process_cwd(self.active_tab().shell_pid).filter(|path| path.is_dir()).or_else(|| {
+                        foreground_process_path(self.active_tab().master_fd, self.active_tab().shell_pid)
+                            .ok()
+                            .filter(|path| path.is_dir())
+                    })
+                {
+                    options.terminal_options.working_directory = Some(wd);
+                }
             }
         }
 
@@ -582,7 +587,8 @@ impl WindowContext {
             self.config.clone()
         };
 
-        // IPC-provided command.
+        // IPC-provided command (save for restore before moving into options).
+        let saved_command = command.clone();
         if let Some(cmd) = command {
             options.terminal_options.command = cmd;
         }
@@ -614,6 +620,10 @@ impl WindowContext {
         };
 
         self.tabs.push(tab);
+        // Store the command used to create this tab for save/restore.
+        if let Some(ref cmd) = saved_command {
+            self.tabs.last_mut().unwrap().command = Some(cmd.clone());
+        }
         info!("[tabs] created tab {}, total={}", tab_id.0, self.tabs.len());
         if !no_switch {
             self.set_active_tab(self.tabs.len() - 1);
@@ -673,6 +683,91 @@ impl WindowContext {
             })
             .collect();
         serde_json::to_string(&tabs).unwrap_or_default()
+    }
+
+    /// Return JSON session file for save/restore.
+    pub fn tabs_save_json(&self) -> String {
+        use serde::Serialize;
+        #[derive(Serialize)]
+        struct SavedTab {
+            command: Option<Vec<String>>,
+            cwd: Option<String>,
+            pinned: bool,
+            title: Option<String>,
+        }
+        #[derive(Serialize)]
+        struct Session {
+            active_tab: usize,
+            tabs: Vec<SavedTab>,
+        }
+        let tabs: Vec<SavedTab> = self.tabs.iter().map(|tab| {
+            let cwd = std::fs::read_link(format!("/proc/{}/cwd", tab.shell_pid)).ok()
+                .map(|p| p.to_string_lossy().to_string());
+            SavedTab {
+                command: tab.command.clone(),
+                cwd,
+                pinned: tab.pinned,
+                title: tab.custom_title.clone(),
+            }
+        }).collect();
+        let session = Session { active_tab: self.active_tab, tabs };
+        serde_json::to_string(&session).unwrap_or_default()
+    }
+
+    /// Restore tabs from a saved session JSON.
+    pub fn restore_tabs(&mut self, json: &[u8]) -> Result<(), Box<dyn Error>> {
+        use serde::Deserialize;
+        #[derive(Deserialize)]
+        struct SavedTab {
+            command: Option<Vec<String>>,
+            cwd: Option<String>,
+            pinned: bool,
+            #[serde(default)]
+            title: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Session {
+            active_tab: usize,
+            tabs: Vec<SavedTab>,
+        }
+        let session: Session = serde_json::from_slice(json)?;
+        if session.tabs.is_empty() { return Ok(()); }
+
+        // Create all tabs from session. First tab reuses the PaneId 0 slot.
+        for (i, saved) in session.tabs.iter().enumerate() {
+            let wd = saved.cwd.as_ref().and_then(|c| std::path::PathBuf::from(c).canonicalize().ok());
+            if i == 0 {
+                // Replace the first tab (close it, then create new one in its slot).
+                self.tabs[0].terminal.lock().exit();
+                self.tabs.remove(0);
+                let _ = self.create_tab_inner(
+                    saved.command.clone(),
+                    wd.map(|p| p),
+                    true,
+                    None,
+                );
+            } else {
+                let _ = self.create_tab_inner(
+                    saved.command.clone(),
+                    wd.map(|p| p),
+                    true,
+                    None,
+                );
+            }
+            if saved.pinned && i < self.tabs.len() {
+                self.tabs[i].pinned = true;
+            }
+            if let Some(ref title) = saved.title {
+                if !title.is_empty() && i < self.tabs.len() {
+                    self.tabs[i].custom_title = Some(title.clone());
+                }
+            }
+        }
+
+        let active = session.active_tab.min(self.tabs.len().saturating_sub(1));
+        self.set_active_tab(active);
+        self.dirty = true;
+        Ok(())
     }
 
     fn close_active_tab(&mut self) {

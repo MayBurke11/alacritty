@@ -66,6 +66,10 @@ pub struct Options {
     #[clap(long)]
     pub daemon: bool,
 
+    /// Restore tabs from a saved session file.
+    #[clap(long, value_hint = ValueHint::FilePath)]
+    pub restore: Option<PathBuf>,
+
     /// CLI options for config overrides.
     #[clap(skip)]
     pub config_options: ParsedOptions,
@@ -278,6 +282,9 @@ pub enum SocketMessage {
 
     /// Toggle pin on a tab by index.
     PinTab(TabSelect),
+
+    /// Save all tabs to a JSON session file (reply).
+    SaveTabs(TabTarget),
 
     /// QuickRun: inline command runner for new tab.
     QuickRun(TabQuickRun),

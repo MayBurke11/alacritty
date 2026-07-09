@@ -161,7 +161,8 @@ impl Processor {
         )?;
 
         self.gl_config = Some(window_context.display.gl_context().config());
-        self.windows.insert(window_context.id(), window_context);
+        let window_id = window_context.id();
+        self.windows.insert(window_id, window_context);
 
         Ok(())
     }
@@ -240,6 +241,20 @@ impl ApplicationHandler<Event> for Processor {
                 self.initial_window_error = Some(err);
                 event_loop.exit();
                 return;
+            }
+
+            // Process tab restore after the initial window is fully initialized.
+            if let Some(ref restore_path) = self.cli_options.restore {
+                match std::fs::read(restore_path) {
+                    Ok(data) => {
+                        for wc in self.windows.values_mut() {
+                            if let Err(err) = wc.restore_tabs(&data) {
+                                log::warn!("Failed to restore session: {err}");
+                            }
+                        }
+                    },
+                    Err(err) => log::warn!("Failed to read session file: {err}"),
+                }
             }
         }
 
@@ -431,6 +446,16 @@ impl ApplicationHandler<Event> for Processor {
                 for window_context in self.windows.values_mut() {
                     window_context.toggle_pin_at(index.saturating_sub(1));
                     break;
+                }
+            },
+            #[cfg(unix)]
+            (EventType::SaveTabsIPC(stream), _) => {
+                let tab_json = self.windows.values()
+                    .next()
+                    .map(|w| w.tabs_save_json())
+                    .unwrap_or_default();
+                if let Ok(mut s) = stream.try_clone() {
+                    ipc::send_reply(&mut s, SocketReply::SaveTabs(tab_json));
                 }
             },
             #[cfg(unix)]
@@ -631,6 +656,8 @@ pub enum EventType {
     CloseTabIPC(usize),
     #[cfg(unix)]
     PinTabIPC(usize),
+    #[cfg(unix)]
+    SaveTabsIPC(Arc<UnixStream>),
     #[cfg(unix)]
     QuickRunIPC(TabQuickRun),
     BlinkCursor,
@@ -2237,6 +2264,7 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 | EventType::SelectTabIPC(_)
                 | EventType::CloseTabIPC(_)
                 | EventType::PinTabIPC(_)
+                | EventType::SaveTabsIPC(_)
                 | EventType::QuickRunIPC(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
