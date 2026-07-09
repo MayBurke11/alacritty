@@ -1692,26 +1692,40 @@ impl WindowContext {
             let tab_config = self.tabs[active_index].config.clone();
             let (display, tabs) = (&mut self.display, &mut self.tabs);
             let active_tab = &mut tabs[active_index];
-            let mut terminal = active_tab.terminal.lock();
-            Self::submit_display_update(
-                &mut terminal,
-                display,
-                &mut active_tab.notifier,
-                &active_tab.message_buffer,
-                &mut active_tab.search_state,
-                old_is_searching,
-                &tab_config,
-                tab_bar_lines,
-                tab_bar_at_top,
-                menu_bar_lines,
-                tab_title_editor_lines,
-            );
-            // Also resize active pane's terminal if it's not pane 0.
-            if active_tab.active_pane != PaneId(0) {
-                if let Some(pane) = active_tab.additional_panes.get_mut(&active_tab.active_pane) {
-                    let mut t = pane.terminal.lock();
-                    t.resize(display.size_info);
-                    let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(display.size_info.into()));
+            let is_multi_pane = active_tab.pane_tree.leaf_ids().len() > 1;
+
+            // Always resize pane 0 (submit_display_update handles reserved lines).
+            {
+                let mut terminal = active_tab.terminal.lock();
+                Self::submit_display_update(
+                    &mut terminal, display, &mut active_tab.notifier,
+                    &active_tab.message_buffer, &mut active_tab.search_state,
+                    old_is_searching, &tab_config, tab_bar_lines,
+                    tab_bar_at_top, menu_bar_lines, tab_title_editor_lines,
+                );
+            }
+
+            // Multi-pane: resize ALL panes to their split rects.
+            if is_multi_pane {
+                let size_info = display.size_info;
+                let cell_w = size_info.cell_width();
+                let cell_h = size_info.cell_height();
+                let padding_x = size_info.padding_x();
+                let padding_y = size_info.padding_y();
+                let viewport = crate::pane_tree::Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
+                let (pane_rects, _) = active_tab.pane_tree.leaf_rects(viewport);
+                for (pid, rect) in &pane_rects {
+                    if active_tab.zoomed_pane == Some(*pid) { continue; }
+                    let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
+                    if *pid == PaneId(0) {
+                        let mut t = active_tab.terminal.lock();
+                        t.resize(ps);
+                        let _ = active_tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+                    } else if let Some(pane) = active_tab.additional_panes.get_mut(pid) {
+                        let mut t = pane.terminal.lock();
+                        t.resize(ps);
+                        let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+                    }
                 }
             }
             self.dirty = true;
