@@ -863,10 +863,10 @@ impl WindowContext {
         )?;
 
         // Create context for the Alacritty window.
-        Ok(WindowContext {
+        let mut wc = WindowContext {
             preserve_title,
             display,
-            config,
+            config: config.clone(),
             window_config: Default::default(),
             event_queue: Default::default(),
             modifiers: Default::default(),
@@ -883,7 +883,20 @@ impl WindowContext {
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
-        })
+        };
+
+        // Process tab presets from config.
+        let presets: Vec<_> = wc.config.tabs.presets.clone();
+        for preset in presets {
+            let cmd = preset.command.as_ref().map(|p| {
+                let mut args = vec![p.program().to_owned()];
+                args.extend(p.args().iter().cloned());
+                args
+            });
+            let _ = wc.create_tab_inner(cmd, None, preset.no_switch);
+        }
+
+        Ok(wc)
     }
 
     /// Update the terminal window to the latest config.

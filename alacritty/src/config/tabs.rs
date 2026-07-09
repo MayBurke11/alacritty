@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use alacritty_config_derive::ConfigDeserialize;
 
+use crate::config::ui_config::Program;
 use crate::display::color::Rgb;
 
 #[derive(ConfigDeserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -23,6 +24,18 @@ pub struct Tabs {
     pub inactive_tab_font_style: TabFontStyle,
     pub tab_bar_background: Option<Rgb>,
     pub mouse: TabMouse,
+    /// Preset tabs to create on startup.
+    pub presets: Vec<TabPreset>,
+}
+
+#[derive(ConfigDeserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct TabPreset {
+    /// Command to run in the tab.
+    pub command: Option<Program>,
+
+    /// Do not switch to this tab on startup.
+    #[serde(default)]
+    pub no_switch: bool,
 }
 
 impl Tabs {
@@ -52,6 +65,7 @@ impl Default for Tabs {
             inactive_tab_font_style: Default::default(),
             tab_bar_background: None,
             mouse: Default::default(),
+            presets: Vec::new(),
         }
     }
 }
