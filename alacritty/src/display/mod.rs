@@ -1185,6 +1185,28 @@ impl Display {
                 x: hb.x, y: hb.y, width: hb.width, height: hb.height,
                 sub_index: None,
             }).collect();
+
+            // Submenu row.
+            if let Some(idx) = expanded_menu {
+                if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
+                    let sub_line = match menu_edge {
+                        TabBarEdge::Bottom => menu_line.saturating_sub(1),
+                        TabBarEdge::Top => menu_line + 1,
+                    };
+                    let sub_labels: Vec<(String, bool)> = config.menu.items[idx].submenu.iter()
+                        .map(|sub| (sub.label.clone(), false))
+                        .collect();
+                    let old_count2 = self.tab_hit_boxes.len();
+                    self.draw_bar(config, &sub_labels, sub_line, menu_edge);
+                    self.menu_hit_boxes.extend(
+                        self.tab_hit_boxes.drain(old_count2..).map(|hb| MenuHitBox {
+                            index: idx,
+                            x: hb.x, y: hb.y, width: hb.width, height: hb.height,
+                            sub_index: Some(hb.index),
+                        })
+                    );
+                }
+            }
         }
 
         self.draw_render_timer(config);
