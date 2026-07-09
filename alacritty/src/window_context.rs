@@ -266,6 +266,8 @@ pub struct WindowContext {
     last_active_tab_id: Option<TabId>,
     tab_title_editor: Option<TabTitleEditor>,
     run_editor: Option<String>,
+    /// Index of expanded top-level menu item, or None if all collapsed.
+    expanded_menu: Option<usize>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -1011,6 +1013,7 @@ impl WindowContext {
             last_active_tab_id: None,
             tab_title_editor: None,
             run_editor: None,
+            expanded_menu: None,
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,

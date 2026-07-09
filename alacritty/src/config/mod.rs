@@ -21,6 +21,7 @@ pub mod scrolling;
 pub mod selection;
 pub mod serde_utils;
 pub mod tabs;
+pub mod menu;
 pub mod terminal;
 pub mod ui_config;
 pub mod window;

@@ -1128,6 +1128,26 @@ impl Display {
             self.draw_tab_bar(config, tab_titles, line);
         }
 
+        // Draw menu bar.
+        if !config.menu.items.is_empty() {
+            let menu_line = match config.menu.menu_bar_edge {
+                crate::config::menu::MenuBarEdge::Top => {
+                    usize::from(config.tabs.display_tab_bar(tab_titles.len())
+                        && config.tabs.tab_bar_edge == TabBarEdge::Top)
+                },
+                crate::config::menu::MenuBarEdge::Bottom => {
+                    let tab_at_bottom = config.tabs.display_tab_bar(tab_titles.len())
+                        && config.tabs.tab_bar_edge == TabBarEdge::Bottom;
+                    if tab_at_bottom {
+                        size_info.screen_lines() + 1
+                    } else {
+                        size_info.screen_lines()
+                    }
+                },
+            };
+            self.draw_menu_bar(config, &config.menu.items, menu_line);
+        }
+
         self.draw_render_timer(config);
 
         // Draw hyperlink uri preview.
@@ -1911,6 +1931,55 @@ impl Display {
                 frame.mark_fully_damaged();
                 *hint = None;
             }
+        }
+    }
+
+    /// Draw a simple menu bar with labels.
+    fn draw_menu_bar(
+        &mut self,
+        config: &UiConfig,
+        items: &[crate::config::menu::MenuItem],
+        line: usize,
+    ) {
+        let metrics = self.glyph_cache.font_metrics();
+        let size_info = self.size_info;
+        let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y());
+        let height = size_info.cell_height();
+        let num_cols = size_info.columns();
+
+        self.damage_tracker.frame().add_viewport_rect(
+            &size_info, 0, y as i32, size_info.width() as i32, height as i32,
+        );
+        self.damage_tracker.next_frame().add_viewport_rect(
+            &size_info, 0, y as i32, size_info.width() as i32, height as i32,
+        );
+
+        let bar_bg = config.colors.primary.background * 0.8;
+        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+            0., y, size_info.width(), height, bar_bg, 1.0,
+        )]);
+
+        let fg = config.colors.primary.foreground * 0.7;
+        let mut column = 0usize;
+
+        for (_idx, item) in items.iter().enumerate() {
+            let label = format!(" {} ", item.label);
+            let label_width: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
+            if column + label_width > num_cols {
+                break;
+            }
+
+            self.draw_string_with_flags(
+                Point::new(line, Column(column)),
+                fg,
+                bar_bg,
+                0.0,
+                &label,
+                &size_info,
+                Flags::empty(),
+            );
+
+            column += label_width;
         }
     }
 
