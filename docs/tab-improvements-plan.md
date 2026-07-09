@@ -25,9 +25,9 @@
 - 7/7 E2E IPC tests passing
 - Tag: `tab-ipc-done`
 
-## Phase 2: QuickRun (inline command runner)
+## Phase 2: QuickRun (inline command runner) ✅
 
-### `Ctrl+Shift+P` — Run command in new tab
+### `Ctrl+Shift+P` — Run command in new tab ✅
 ```toml
 [[keyboard.bindings]]
 key = "p"
@@ -35,24 +35,25 @@ mods = "Control|Shift"
 action = "QuickRun"
 ```
 - Opens inline `"run: "` field in footer
-- Same infrastructure as `TabTitleEditor` (keyboard intercept, Enter/Esc)
-- On Enter: `create_tab_with_command("htop")` — new tab with command
+- Enter = create + switch, Shift+Enter = background
+- IPC: `alacritty msg quickrun -e htop --no-switch`
+- Commit: `1f683a89`
 
-## Phase 3: Config Presets (medium)
+## Phase 3: Config Presets ✅
 
-### `[[tabs.presets]]` — startup commands
+### `[[tabs.presets]]` — startup tabs ✅
 ```toml
 [[tabs.presets]]
 command = "nvim"
 
 [[tabs.presets]]
-command = { program = "cargo", args = ["watch", "-x", "run"] }
-
-[[tabs.presets]]
 command = "htop"
+no_switch = true
 ```
-- Process `presets` in `WindowContext::new()` after first tab created
-- Loop: `create_tab()` with each preset's command
+- Processed in `WindowContext::new()` after first tab
+- Command can be string or `{ program, args }` object
+- Last preset without `no_switch` becomes active tab
+- Commit: `25500e71`
 
 ### Per-tab working directory override
 - `msg create-tab --cwd ~/project`
@@ -79,6 +80,18 @@ command = "htop"
 ---
 
 ## Priority Order
+
+1. ✅ `create-tab -e <CMD>` — IPC tab with command
+2. ✅ `create-tab --no-switch` — background tabs
+3. ✅ `list-tabs` — JSON tab list
+4. ✅ `select-tab` / `close-tab` — IPC CRUD
+5. ✅ Hysteresis title — no flicker
+6. ✅ Slant style fix — stable layout
+7. ✅ QuickRun (`Ctrl+Shift+P`) — inline `run:` → new tab
+8. ✅ `[[tabs.presets]]` — startup tabs in config
+9. Per-tab config overrides — dark editor, light shell
+10. Tab pinning — protect tabs from accidental close
+11. Save/restore — session management
 
 1. `create-tab -e <CMD>` — unlocks automation
 2. `create-tab --no-switch` — background tabs
