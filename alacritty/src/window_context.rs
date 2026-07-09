@@ -1289,25 +1289,87 @@ impl WindowContext {
                 (self.render_tab_title(index, tab, active), active)
             })
             .collect();
-        let active_tab = self.active_tab;
-        let tab_config = self.tabs[active_tab].config.clone();
+        let active_tab_idx = self.active_tab;
+        let tab_config = self.tabs[active_tab_idx].config.clone();
         let (display, tabs) = (&mut self.display, &mut self.tabs);
-        let active_tab = &mut tabs[active_tab];
-        let terminal = active_tab.terminal.lock();
-        display.draw(
-            terminal,
-            scheduler,
-            &active_tab.message_buffer,
-            &tab_config,
-            &mut active_tab.search_state,
-            &tab_titles,
-            self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
-            self.run_editor.as_deref(),
-            &self.menu_state,
-            None,
-            true,
-            false,
-        );
+        let active_tab = &mut tabs[active_tab_idx];
+
+        // Zoomed pane: render single pane full-viewport.
+        if let Some(zoomed_id) = active_tab.zoomed_pane {
+            display.pane_dividers.clear();
+            let terminal_lock = if zoomed_id == PaneId(0) {
+                Arc::clone(&active_tab.terminal)
+            } else if let Some(pane) = active_tab.additional_panes.get(&zoomed_id) {
+                Arc::clone(&pane.terminal)
+            } else {
+                Arc::clone(&active_tab.terminal)
+            };
+            let terminal = terminal_lock.lock();
+            display.draw(
+                terminal, scheduler, &active_tab.message_buffer, &tab_config,
+                &mut active_tab.search_state, &tab_titles,
+                self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
+                self.run_editor.as_deref(), &self.menu_state, None, true, false,
+            );
+            return;
+        }
+
+        // Compute pane rects and divider rects for multi-pane layout.
+        display.pane_dividers.clear();
+        let leaves = active_tab.pane_tree.leaf_ids();
+        if leaves.len() > 1 {
+            use crate::pane_tree::Rect as PRect;
+            let viewport = PRect::new(0.0, 0.0, display.size_info.width() as f32, display.size_info.height() as f32);
+            let (pane_rects, divider_rects) = active_tab.pane_tree.leaf_rects(viewport);
+            for divider in &divider_rects {
+                let rr = crate::renderer::rects::RenderRect::new(
+                    divider.x, divider.y, divider.width.max(2.0), divider.height.max(2.0),
+                    crate::display::color::Rgb(alacritty_terminal::vte::ansi::Rgb { r: 196, g: 154, b: 247 }), 0.6,
+                );
+                display.pane_dividers.push(rr);
+            }
+
+            let active_pane = active_tab.active_pane;
+            // Draw all panes with scissor clips.
+            for (pane_id, rect) in &pane_rects {
+                let terminal_lock = if *pane_id == PaneId(0) {
+                    Arc::clone(&active_tab.terminal)
+                } else if let Some(pane) = active_tab.additional_panes.get(pane_id) {
+                    Arc::clone(&pane.terminal)
+                } else {
+                    Arc::clone(&active_tab.terminal)
+                };
+                let terminal_guard = terminal_lock.lock();
+                let clip = (rect.x, rect.y, rect.width, rect.height);
+                display.draw(
+                    terminal_guard, scheduler, &active_tab.message_buffer, &tab_config,
+                    &mut active_tab.search_state,
+                    if *pane_id == active_pane { &tab_titles } else { &[] },
+                    if *pane_id == active_pane { self.tab_title_editor.as_ref().map(|e| e.value.as_str()) } else { None },
+                    self.run_editor.as_deref(), &self.menu_state,
+                    Some(clip), *pane_id == active_pane, true,
+                );
+            }
+
+            unsafe { crate::gl::Disable(crate::gl::SCISSOR_TEST); }
+            display.draw_pane_dividers();
+            display.present(scheduler);
+        } else {
+            let terminal_lock = if active_tab.active_pane == PaneId(0) {
+                Arc::clone(&active_tab.terminal)
+            } else if let Some(pane) = active_tab.additional_panes.get(&active_tab.active_pane) {
+                Arc::clone(&pane.terminal)
+            } else {
+                Arc::clone(&active_tab.terminal)
+            };
+            let terminal = terminal_lock.lock();
+            display.draw(
+                terminal, scheduler, &active_tab.message_buffer, &tab_config,
+                &mut active_tab.search_state, &tab_titles,
+                self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
+                self.run_editor.as_deref(), &self.menu_state, None, true, false,
+            );
+        }
     }
 
     /// Process events for this terminal window.
