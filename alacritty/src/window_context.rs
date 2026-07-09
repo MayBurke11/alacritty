@@ -41,8 +41,8 @@ use crate::daemon::foreground_process_path;
 use crate::display::Display;
 use crate::display::window::Window;
 use crate::event::{
-    ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuState, Mouse, SearchState,
-    TabAction, TabId, TouchPurpose,
+    ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuSelection, MenuState, Mouse,
+    SearchState, TabAction, TabId, TouchPurpose,
 };
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
@@ -654,6 +654,56 @@ impl WindowContext {
         }
         self.tabs[index].pinned = !self.tabs[index].pinned;
         self.dirty = true;
+    }
+
+    fn handle_menu_selection(&mut self, selection: Option<MenuSelection>) {
+        let sel = match selection {
+            Some(s) => s,
+            None => return,
+        };
+        match sel {
+            MenuSelection::Command(program, args) => {
+                let _ = std::process::Command::new(&program).args(&args).spawn();
+            },
+            MenuSelection::Action(ref action) => {
+                match action.as_str() {
+                    "create-tab" => {
+                        let _ = self.event_proxy.send_event(Event::new(
+                            EventType::Tab(TabAction::Create),
+                            self.display.window.id(),
+                        ));
+                    },
+                    "close-tab" => {
+                        let _ = self.event_proxy.send_event(Event::new(
+                            EventType::Tab(TabAction::Close),
+                            self.display.window.id(),
+                        ));
+                    },
+                    "rename-tab" => {
+                        let _ = self.event_proxy.send_event(Event::new(
+                            EventType::Tab(TabAction::SetTitle),
+                            self.display.window.id(),
+                        ));
+                    },
+                    "pin-tab" => {
+                        self.toggle_pin_at(self.active_tab);
+                    },
+                    "move-tab-forward" => {
+                        let _ = self.event_proxy.send_event(Event::new(
+                            EventType::Tab(TabAction::MoveForward),
+                            self.display.window.id(),
+                        ));
+                    },
+                    "move-tab-backward" => {
+                        let _ = self.event_proxy.send_event(Event::new(
+                            EventType::Tab(TabAction::MoveBackward),
+                            self.display.window.id(),
+                        ));
+                    },
+                    _ => {},
+                }
+            },
+        }
     }
 
     /// Select a tab by index via IPC.
@@ -1278,12 +1328,8 @@ impl WindowContext {
                         TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
                         TabAction::ToggleMenu(idx) => {
                             self.menu_state.focus = *idx;
-                            let cmd = self.menu_state.select(&self.config.menu);
-                            if let Some(Some(program)) = cmd {
-                                let _ = std::process::Command::new(program.program())
-                                    .args(program.args())
-                                    .spawn();
-                            }
+                            let sel = self.menu_state.select(&self.config.menu);
+                            self.handle_menu_selection(sel);
                             self.dirty = true;
                         },
                         TabAction::MenuCommand(_idx, _sub_idx) => {
@@ -1312,12 +1358,8 @@ impl WindowContext {
                             self.dirty = true;
                         },
                         TabAction::MenuSelect => {
-                            let cmd = self.menu_state.select(&self.config.menu);
-                            if let Some(Some(program)) = cmd {
-                                let _ = std::process::Command::new(program.program())
-                                    .args(program.args())
-                                    .spawn();
-                            }
+                            let sel = self.menu_state.select(&self.config.menu);
+                            self.handle_menu_selection(sel);
                             self.dirty = true;
                         },
                         TabAction::MenuBack => {
@@ -1326,11 +1368,23 @@ impl WindowContext {
                         },
                         TabAction::MenuClick(idx) => {
                             self.menu_state.focus = *idx;
-                            let cmd = self.menu_state.select(&self.config.menu);
-                            if let Some(Some(program)) = cmd {
-                                let _ = std::process::Command::new(program.program())
-                                    .args(program.args())
-                                    .spawn();
+                            let sel = self.menu_state.select(&self.config.menu);
+                            self.handle_menu_selection(sel);
+                            self.dirty = true;
+                        },
+                        TabAction::MenuLetterKey(ch) => {
+                            let labels = self.menu_state.bar_labels(&self.config.menu);
+                            let ch_lower: char = ch.to_lowercase().next().unwrap_or(*ch);
+                            for (i, (label, _)) in labels.iter().enumerate() {
+                                if i == 0 { continue; }
+                                let first_char = label.chars().next()
+                                    .map(|c| c.to_lowercase().next().unwrap_or(c));
+                                if first_char == Some(ch_lower) {
+                                    self.menu_state.focus = i;
+                                    let sel = self.menu_state.select(&self.config.menu);
+                                    self.handle_menu_selection(sel);
+                                    break;
+                                }
                             }
                             self.dirty = true;
                         },

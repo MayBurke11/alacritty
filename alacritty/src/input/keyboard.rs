@@ -136,6 +136,13 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
                     return;
                 },
                 _ => {
+                    // Letter keys trigger quick-select by first character.
+                    if let Key::Character(ch) = key.logical_key.as_ref() {
+                        if let Some(c) = ch.chars().next() {
+                            self.ctx.menu_letter_key(c);
+                            return;
+                        }
+                    }
                     // All other keys are suppressed in menu active mode.
                     return;
                 },

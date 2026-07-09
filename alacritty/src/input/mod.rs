@@ -135,6 +135,7 @@ pub trait ActionContext<T: EventListener> {
     fn menu_select(&mut self) {}
     fn menu_back(&mut self) {}
     fn menu_click(&mut self, _idx: usize) {}
+    fn menu_letter_key(&mut self, _ch: char) {}
     fn tab_title_editor_active(&self) -> bool {
         false
     }

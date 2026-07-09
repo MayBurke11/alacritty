@@ -24,6 +24,10 @@ pub struct MenuItem {
     #[serde(default)]
     pub command: Option<Program>,
 
+    /// Built-in action name (takes priority over command, for leaf items).
+    #[serde(default)]
+    pub action: Option<String>,
+
     /// Sub-menu items (shown on click if non-empty).
     #[serde(default)]
     pub submenu: Vec<MenuItem>,

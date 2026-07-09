@@ -709,6 +709,7 @@ pub enum TabAction {
     MenuSelect,
     MenuBack,
     MenuClick(usize),
+    MenuLetterKey(char),
 }
 
 /// Modal menu state.
@@ -721,6 +722,15 @@ pub struct MenuState {
     /// Path of expanded submenus into the menu config tree.
     /// Empty = top level.
     pub path: Vec<usize>,
+}
+
+/// Result of selecting a menu item.
+#[derive(Clone, Debug)]
+pub enum MenuSelection {
+    /// Execute an external command.
+    Command(String, Vec<String>),
+    /// Dispatch a built-in action.
+    Action(String),
 }
 
 impl MenuState {
@@ -747,9 +757,8 @@ impl MenuState {
 
     /// Navigate into submenu at the focused item.
     /// Returns true if navigated, false if command was executed.
-    pub fn select(&mut self, menu: &crate::config::menu::Menu) -> Option<Option<crate::config::ui_config::Program>> {
+    pub fn select(&mut self, menu: &crate::config::menu::Menu) -> Option<MenuSelection> {
         if self.focus == 0 {
-            // Mode indicator — toggle active
             self.active = !self.active;
             if !self.active {
                 self.path.clear();
@@ -766,12 +775,20 @@ impl MenuState {
             self.path.push(item_idx);
             self.focus = 0;
             None
-        } else {
-            let cmd = item.command.clone();
+        } else if let Some(ref action) = item.action {
+            let result = MenuSelection::Action(action.clone());
             self.path.clear();
             self.focus = 0;
             self.active = false;
-            Some(cmd)
+            Some(result)
+        } else if let Some(ref cmd) = item.command {
+            let result = MenuSelection::Command(cmd.program().to_string(), cmd.args().to_vec());
+            self.path.clear();
+            self.focus = 0;
+            self.active = false;
+            Some(result)
+        } else {
+            None
         }
     }
 
@@ -1309,6 +1326,13 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     fn menu_click(&mut self, idx: usize) {
         let _ = self.event_proxy.send_event(Event::new(
             EventType::Tab(TabAction::MenuClick(idx)),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_letter_key(&mut self, ch: char) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuLetterKey(ch)),
             self.display.window.id(),
         ));
     }
