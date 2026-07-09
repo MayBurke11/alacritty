@@ -1158,7 +1158,7 @@ impl Display {
                         && config.tabs.tab_bar_edge == TabBarEdge::Top)
                 },
                 crate::config::menu::MenuBarEdge::Bottom => {
-                    let base = size_info.screen_lines() + search_lines + message_lines;
+                    let base = size_info.screen_lines().saturating_sub(1) + search_lines + message_lines;
                     if config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Bottom
                     {
