@@ -624,19 +624,12 @@ fn common_keybindings() -> Vec<KeyBinding> {
         ".",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabForward;
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
-        // Pane actions.
-        "!",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::SplitRight;
-        "@",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::SplitDown;
-        "#",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::ClosePane;
-        "$",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusLeft;
-        "%",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusRight;
-        "^",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusUp;
-        "&",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::FocusDown;
+        // Pane actions — primary via modal menu (Ctrl+G, p, ...).
+        // Bindings below are optional; remove to use menu-only.
         ArrowRight, ModifiersState::ALT;                                                                  Action::FocusRight;
         ArrowLeft,  ModifiersState::ALT;                                                                  Action::FocusLeft;
         ArrowUp,    ModifiersState::ALT;                                                                  Action::FocusUp;
         ArrowDown,  ModifiersState::ALT;                                                                  Action::FocusDown;
-        "*",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::ToggleZoom;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
         "g",        ModifiersState::CONTROL;                                                             Action::ToggleLocked;
