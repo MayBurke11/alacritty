@@ -737,6 +737,10 @@ impl WindowContext {
                             log::info!("Session saved to {}", path.display());
                         }
                     },
+                    "split-right" => self.split_pane(SplitDir::Horizontal),
+                    "split-down" => self.split_pane(SplitDir::Vertical),
+                    "close-pane" => self.close_pane(),
+                    "toggle-zoom" => self.toggle_zoom(),
                     _ => {},
                 }
             },
