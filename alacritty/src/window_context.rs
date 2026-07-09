@@ -1496,6 +1496,10 @@ impl WindowContext {
                 self.menu_state.list_mode = None;
                 self.menu_state.focus = 0;
             }
+            log::debug!("[menu-sync] op=ToggleLocked AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
+                self.menu_state.active, self.menu_state.path,
+                self.menu_state.list_mode.is_some(), self.menu_state.focus,
+                self.menu_state.bar_labels(&self.config.menu).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
             self.dirty = true;
         }
 
@@ -1552,9 +1556,10 @@ impl WindowContext {
                     self.dirty = true;
                 },
             }
-            log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={}",
+            log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
                 op, self.menu_state.active, self.menu_state.path,
-                self.menu_state.list_mode.is_some(), self.menu_state.focus);
+                self.menu_state.list_mode.is_some(), self.menu_state.focus,
+                self.menu_state.bar_labels(&self.config.menu).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
         }
 
         self.sync_focus();
