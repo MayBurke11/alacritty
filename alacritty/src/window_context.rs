@@ -700,6 +700,20 @@ impl WindowContext {
                             self.display.window.id(),
                         ));
                     },
+                    "save-session" => {
+                        let json = self.tabs_save_json();
+                        let dir = std::env::var("HOME")
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                            .join(".config").join("alacritty");
+                        let _ = std::fs::create_dir_all(&dir);
+                        let path = dir.join("session.json");
+                        if let Err(err) = std::fs::write(&path, &json) {
+                            log::warn!("Failed to save session: {err}");
+                        } else {
+                            log::info!("Session saved to {}", path.display());
+                        }
+                    },
                     _ => {},
                 }
             },
