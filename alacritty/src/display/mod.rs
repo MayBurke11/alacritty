@@ -835,6 +835,7 @@ impl Display {
         search_state: &mut SearchState,
         tab_titles: &[(String, bool)],
         tab_title_editor: Option<&str>,
+        run_editor: Option<&str>,
     ) {
         // Collect renderable content before the terminal is dropped.
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
@@ -1032,7 +1033,7 @@ impl Display {
             }
         }
 
-        let tab_title_editor_offset = usize::from(tab_title_editor.is_some());
+        let tab_title_editor_offset = usize::from(tab_title_editor.is_some() || run_editor.is_some());
 
         if let Some(message) = message_buffer.message() {
             let search_offset =
@@ -1087,6 +1088,22 @@ impl Display {
             self.draw_footer_text(
                 config,
                 &format_search_prompt("Tab title: ", tab_title_editor, size_info.columns()),
+                line,
+            );
+            let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;
+            let width = size_info.width() as i32;
+            let height = size_info.cell_height() as i32;
+            self.damage_tracker.frame().add_viewport_rect(&size_info, 0, y, width, height);
+            self.damage_tracker.next_frame().add_viewport_rect(&size_info, 0, y, width, height);
+        }
+
+        if let Some(run_editor) = run_editor {
+            let line = size_info.screen_lines() + usize::from(search_state.regex().is_some())
+                + usize::from(tab_title_editor.is_some());
+            let prompt = format!("run: {}", run_editor);
+            self.draw_footer_text(
+                config,
+                &format_search_prompt(&prompt, "", size_info.columns()),
                 line,
             );
             let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;

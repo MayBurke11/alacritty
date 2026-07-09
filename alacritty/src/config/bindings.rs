@@ -259,6 +259,9 @@ pub enum Action {
     /// Start a backward buffer search.
     SearchBackward,
 
+    /// QuickRun: inline command runner for new tab.
+    QuickRun,
+
     /// No action.
     None,
 }
@@ -579,6 +582,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
         ".",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabForward;
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
+        "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
     )
 }
 

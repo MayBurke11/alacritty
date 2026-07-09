@@ -275,6 +275,9 @@ pub enum SocketMessage {
 
     /// Close a tab by index in the target window.
     CloseTab(TabSelect),
+
+    /// QuickRun: inline command runner for new tab.
+    QuickRun(TabQuickRun),
 }
 
 /// Options for creating a tab via IPC.
@@ -288,6 +291,23 @@ pub struct TabCreateOptions {
     /// Working directory for the new tab.
     #[clap(long, value_hint = ValueHint::FilePath)]
     pub working_directory: Option<PathBuf>,
+
+    /// Do not switch to the new tab.
+    #[clap(long)]
+    pub no_switch: bool,
+
+    /// Target window ID.
+    #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
+    pub window_id: Option<i128>,
+}
+
+/// QuickRun: inline command runner for new tab (via IPC or keyboard).
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct TabQuickRun {
+    /// Command and args to execute in the new tab.
+    #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+    pub command: Vec<String>,
 
     /// Do not switch to the new tab.
     #[clap(long)]

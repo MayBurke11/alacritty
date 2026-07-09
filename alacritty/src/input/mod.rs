@@ -130,6 +130,14 @@ pub trait ActionContext<T: EventListener> {
     fn cancel_tab_title(&mut self) {}
     fn tab_title_input(&mut self, _c: char) {}
     fn tab_title_pop_word(&mut self) {}
+    fn run_editor_active(&self) -> bool {
+        false
+    }
+    fn quick_run(&mut self) {}
+    fn confirm_run(&mut self, _no_switch: bool) {}
+    fn cancel_run(&mut self) {}
+    fn run_editor_input(&mut self, _c: char) {}
+    fn run_editor_pop_word(&mut self) {}
     #[cfg(target_os = "macos")]
     fn create_new_window(&mut self, _tabbing_id: Option<String>) {}
     #[cfg(not(target_os = "macos"))]
@@ -505,6 +513,7 @@ impl<T: EventListener> Execute<T> for Action {
             Action::MoveTabBackward => ctx.move_tab_backward(),
             #[cfg(not(target_os = "macos"))]
             Action::SetTabTitle => ctx.set_tab_title(),
+            Action::QuickRun => ctx.quick_run(),
             _ => (),
         }
     }

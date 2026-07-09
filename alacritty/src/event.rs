@@ -45,7 +45,7 @@ use alacritty_terminal::term::{self, ClipboardType, Term, TermMode};
 use alacritty_terminal::vte::ansi::NamedColor;
 
 #[cfg(unix)]
-use crate::cli::{IpcConfig, ParsedOptions, TabCreateOptions};
+use crate::cli::{IpcConfig, ParsedOptions, TabCreateOptions, TabQuickRun};
 use crate::cli::{Options as CliOptions, WindowOptions};
 use crate::clipboard::Clipboard;
 use crate::config::ui_config::{HintAction, HintInternalAction};
@@ -426,6 +426,13 @@ impl ApplicationHandler<Event> for Processor {
                     break;
                 }
             },
+            #[cfg(unix)]
+            (EventType::QuickRunIPC(options), _) => {
+                for window_context in self.windows.values_mut() {
+                    window_context.quick_run_ipc(options.clone());
+                    break;
+                }
+            },
             // Shutdown all windows.
             #[cfg(unix)]
             (EventType::Shutdown, _) => event_loop.exit(),
@@ -615,6 +622,8 @@ pub enum EventType {
     SelectTabIPC(usize),
     #[cfg(unix)]
     CloseTabIPC(usize),
+    #[cfg(unix)]
+    QuickRunIPC(TabQuickRun),
     BlinkCursor,
     BlinkCursorTimeout,
     SearchNext,
@@ -649,6 +658,12 @@ pub enum TabAction {
     CancelTitle,
     TitleInput(char),
     TitlePopWord,
+    Run,
+    ConfirmRun,
+    ConfirmRunNoSwitch,
+    CancelRun,
+    RunInput(char),
+    RunPopWord,
 }
 
 /// Regex search state.
@@ -754,6 +769,7 @@ pub struct ActionContext<'a, N, T> {
     pub tab_detected_title: &'a str,
     pub tab_custom_title: &'a mut Option<String>,
     pub tab_title_editor_active: bool,
+    pub run_editor_active: bool,
     pub is_active_tab: bool,
     pub clipboard: &'a mut Clipboard,
     pub mouse: &'a mut Mouse,
@@ -1086,6 +1102,41 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     fn tab_title_pop_word(&mut self) {
         let _ = self.event_proxy.send_event(Event::new(
             EventType::Tab(TabAction::TitlePopWord),
+            self.display.window.id(),
+        ));
+    }
+
+    fn run_editor_active(&self) -> bool {
+        self.run_editor_active
+    }
+
+    fn quick_run(&mut self) {
+        let _ = self
+            .event_proxy
+            .send_event(Event::new(EventType::Tab(TabAction::Run), self.display.window.id()));
+    }
+
+    fn confirm_run(&mut self, no_switch: bool) {
+        let action = if no_switch { TabAction::ConfirmRunNoSwitch } else { TabAction::ConfirmRun };
+        let _ = self.event_proxy.send_event(Event::new(EventType::Tab(action), self.display.window.id()));
+    }
+
+    fn cancel_run(&mut self) {
+        let _ = self
+            .event_proxy
+            .send_event(Event::new(EventType::Tab(TabAction::CancelRun), self.display.window.id()));
+    }
+
+    fn run_editor_input(&mut self, c: char) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::RunInput(c)),
+            self.display.window.id(),
+        ));
+    }
+
+    fn run_editor_pop_word(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::RunPopWord),
             self.display.window.id(),
         ));
     }
@@ -2167,7 +2218,8 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 EventType::CreateTabIPC(_)
                 | EventType::ListTabsIPC(_)
                 | EventType::SelectTabIPC(_)
-                | EventType::CloseTabIPC(_) => (),
+                | EventType::CloseTabIPC(_)
+                | EventType::QuickRunIPC(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)

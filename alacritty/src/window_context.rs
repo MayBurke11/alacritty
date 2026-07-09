@@ -258,6 +258,7 @@ pub struct WindowContext {
     next_tab_id: u64,
     last_active_tab_id: Option<TabId>,
     tab_title_editor: Option<TabTitleEditor>,
+    run_editor: Option<String>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -331,6 +332,45 @@ impl WindowContext {
             self.display.pending_update.dirty = true;
             self.dirty = true;
         }
+    }
+
+    fn start_run_editor(&mut self) {
+        self.run_editor = Some(String::new());
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn confirm_run_editor(&mut self, no_switch: bool) {
+        let Some(cmd) = self.run_editor.take() else { return };
+        let cmd = cmd.trim().to_owned();
+        if !cmd.is_empty() {
+            let args: Vec<String> = cmd.split_whitespace().map(|s| s.to_owned()).collect();
+            let _ = self.create_tab_inner(Some(args), None, no_switch);
+        }
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn cancel_run_editor(&mut self) {
+        if self.run_editor.take().is_some() {
+            self.display.pending_update.dirty = true;
+            self.dirty = true;
+        }
+    }
+
+    fn run_editor_input(&mut self, c: char) {
+        let Some(ref mut value) = self.run_editor else { return };
+        match c {
+            '\x08' | '\x7f' => { value.pop(); }
+            _ => value.push(c),
+        }
+        self.dirty = true;
+    }
+
+    fn run_editor_pop_word(&mut self) {
+        let Some(ref mut value) = self.run_editor else { return };
+        while value.pop().is_some_and(|c| c != ' ') {}
+        self.dirty = true;
     }
 
     fn window_close_confirmation_message(&self) -> Message {
@@ -479,6 +519,15 @@ impl WindowContext {
         let no_switch = options.no_switch;
         if let Err(err) = self.create_tab_inner(cmd, cwd, no_switch) {
             log::warn!("Failed to create tab via IPC: {err:?}");
+        }
+    }
+
+    /// QuickRun via IPC — create a tab with the given command.
+    pub fn quick_run_ipc(&mut self, options: crate::cli::TabQuickRun) {
+        let cmd = (!options.command.is_empty()).then(|| options.command.clone());
+        let no_switch = options.no_switch;
+        if let Err(err) = self.create_tab_inner(cmd, None, no_switch) {
+            log::warn!("Failed to create tab via QuickRun IPC: {err:?}");
         }
     }
 
@@ -830,6 +879,7 @@ impl WindowContext {
             next_tab_id: 1,
             last_active_tab_id: None,
             tab_title_editor: None,
+            run_editor: None,
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
@@ -994,6 +1044,7 @@ impl WindowContext {
             &mut active_tab.search_state,
             &tab_titles,
             self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
+            self.run_editor.as_deref(),
         );
     }
 
@@ -1069,6 +1120,12 @@ impl WindowContext {
                         TabAction::CancelTitle => self.cancel_tab_title_editor(),
                         TabAction::TitleInput(c) => self.tab_title_input(*c),
                         TabAction::TitlePopWord => self.tab_title_pop_word(),
+                        TabAction::Run => self.start_run_editor(),
+                        TabAction::ConfirmRun => self.confirm_run_editor(false),
+                        TabAction::ConfirmRunNoSwitch => self.confirm_run_editor(true),
+                        TabAction::CancelRun => self.cancel_run_editor(),
+                        TabAction::RunInput(c) => self.run_editor_input(*c),
+                        TabAction::RunPopWord => self.run_editor_pop_word(),
                     }
                     continue;
                 },
@@ -1103,6 +1160,7 @@ impl WindowContext {
                 tab_detected_title: &tab.detected_title,
                 tab_custom_title: &mut tab.custom_title,
                 tab_title_editor_active: self.tab_title_editor.is_some(),
+                run_editor_active: self.run_editor.is_some(),
                 is_active_tab,
                 #[cfg(not(windows))]
                 master_fd: tab.master_fd,
@@ -1126,7 +1184,8 @@ impl WindowContext {
         if self.display.pending_update.dirty {
             let tab_bar_lines = self.tab_bar_lines();
             let tab_bar_at_top = usize::from(self.tab_bar_at_top());
-            let tab_title_editor_lines = usize::from(self.tab_title_editor.is_some());
+            let tab_title_editor_lines =
+                usize::from(self.tab_title_editor.is_some() || self.run_editor.is_some());
             let active_index = self.active_tab;
             let (display, tabs, config) = (&mut self.display, &mut self.tabs, &self.config);
             let active_tab = &mut tabs[active_index];
