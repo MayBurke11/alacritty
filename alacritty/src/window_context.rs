@@ -1939,6 +1939,22 @@ impl WindowContext {
         if let Some(&first) = self.active_tab().pane_tree.leaf_ids().first() {
             self.active_tab_mut().active_pane = first;
         }
+        // Resize remaining pane(s) to full viewport.
+        let remaining = self.active_tab().pane_tree.leaf_ids().len();
+        if remaining == 1 {
+            let tab = self.active_tab_mut();
+            let size_info = self.display.size_info;
+            if tab.active_pane == PaneId(0) {
+                let mut t = tab.terminal.lock();
+                t.resize(size_info);
+                let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into()));
+            } else if let Some(pane) = tab.additional_panes.get_mut(&tab.active_pane) {
+                let mut t = pane.terminal.lock();
+                t.resize(size_info);
+                let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into()));
+            }
+        }
+        self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
         self.display.pending_update.dirty = true;
         self.dirty = true;

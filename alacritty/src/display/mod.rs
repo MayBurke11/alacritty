@@ -1017,8 +1017,8 @@ impl Display {
         };
 
         // Draw cursor.
+        let cursor_rect_start = rects.len();
         rects.extend(cursor.rects(&size_info, config.cursor.thickness()));
-        let cursor_rect_start = rects.len(); // track where cursor rects start
 
         // For scissored panes, skip UI elements (search, footer, tab, menu) and return early.
         if pane_clip.is_some() {
