@@ -1288,6 +1288,9 @@ impl WindowContext {
             self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
             self.run_editor.as_deref(),
             &self.menu_state,
+            None,
+            true,
+            false,
         );
     }
 

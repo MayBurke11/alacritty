@@ -417,6 +417,9 @@ pub struct Display {
     /// Hit boxes for menu bar items.
     pub menu_hit_boxes: Vec<MenuHitBox>,
 
+    /// Pane divider rectangles for the current frame.
+    pub pane_dividers: Vec<RenderRect>,
+
     renderer: ManuallyDrop<Renderer>,
     renderer_preference: Option<RendererPreference>,
 
@@ -591,6 +594,7 @@ impl Display {
             hint_mouse_point: Default::default(),
             tab_hit_boxes: Default::default(),
             menu_hit_boxes: Default::default(),
+            pane_dividers: Default::default(),
             pending_update: Default::default(),
             cursor_hidden: Default::default(),
             meter: Default::default(),
@@ -852,12 +856,44 @@ impl Display {
         tab_title_editor: Option<&str>,
         run_editor: Option<&str>,
         menu_state: &crate::event::MenuState,
+        pane_clip: Option<(f32, f32, f32, f32)>,
+        is_active_pane: bool,
+        skip_present: bool,
     ) {
+        // Set scissor rect for pane rendering.
+        if let Some((x, y, w, h)) = pane_clip {
+            let gl_y = self.size_info.height() - y - h;
+            unsafe {
+                crate::gl::Scissor(x as i32, gl_y as i32, w.max(1.) as i32, h.max(1.) as i32);
+                crate::gl::Enable(crate::gl::SCISSOR_TEST);
+            }
+        } else {
+            unsafe {
+                crate::gl::Disable(crate::gl::SCISSOR_TEST);
+            }
+        }
+
+        // Compute pane cell offset before creating content.
+        let pane_offset = pane_clip.map(|(px, py, _, _)| {
+            let cell_w = self.size_info.cell_width().max(1.);
+            let cell_h = self.size_info.cell_height().max(1.);
+            ((px / cell_w).round() as usize, (py / cell_h).round() as usize)
+        });
+
         // Collect renderable content before the terminal is dropped.
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
         let mut grid_cells = Vec::new();
         for cell in &mut content {
             grid_cells.push(cell);
+        }
+
+        // Translate grid cells by pane offset.
+        if let Some((col_offset, line_offset)) = pane_offset {
+            for cell in &mut grid_cells {
+                cell.point.column =
+                    alacritty_terminal::index::Column(cell.point.column.0 + col_offset);
+                cell.point.line = cell.point.line.saturating_add(line_offset);
+            }
         }
         let selection_range = content.selection_range();
         let foreground_color = content.color(NamedColor::Foreground as usize);
@@ -982,6 +1018,31 @@ impl Display {
 
         // Draw cursor.
         rects.extend(cursor.rects(&size_info, config.cursor.thickness()));
+
+        // For scissored panes, skip UI elements (search, footer, tab, menu) and return early.
+        if pane_clip.is_some() {
+            if is_active_pane {
+                if let Some((col_offset, line_offset)) = pane_offset {
+                    let cursor_point = cursor.point();
+                    let translated_point = Point::new(
+                        cursor_point.line.saturating_add(line_offset),
+                        Column(cursor_point.column.0 + col_offset),
+                    );
+                    let offset_cursor = RenderableCursor::new(
+                        translated_point,
+                        cursor.shape(),
+                        cursor.color(),
+                        cursor.width(),
+                    );
+                    rects.extend(offset_cursor.rects(&size_info, config.cursor.thickness()));
+                }
+            }
+            self.renderer.draw_rects(&size_info, &metrics, rects);
+            unsafe {
+                crate::gl::Disable(crate::gl::SCISSOR_TEST);
+            }
+            return;
+        }
 
         // Push visual bell after url/underline/strikeout rects.
         let visual_bell_intensity = self.visual_bell.intensity();
@@ -1435,6 +1496,35 @@ impl Display {
 
     /// Draw preview for the currently highlighted `Hyperlink`.
     #[inline(never)]
+    /// Draw pane dividers using the pre-populated pane_dividers list.
+    pub fn draw_pane_dividers(&mut self) {
+        if self.pane_dividers.is_empty() {
+            return;
+        }
+        self.make_current();
+        let metrics = self.glyph_cache.font_metrics();
+        self.renderer.draw_rects(&self.size_info, &metrics, self.pane_dividers.clone());
+    }
+
+    /// Present the rendered frame (swap buffers + finish).
+    pub fn present(&mut self, scheduler: &mut Scheduler) {
+        self.window.pre_present_notify();
+
+        if self.damage_tracker.debug {
+            let damage = self.damage_tracker.shape_frame_damage(self.size_info.into());
+            let mut rects = Vec::with_capacity(damage.len());
+            self.highlight_damage(&mut rects);
+            let metrics = self.glyph_cache.font_metrics();
+            self.renderer.draw_rects(&self.size_info, &metrics, rects);
+        }
+
+        self.swap_buffers();
+
+        if matches!(self.raw_window_handle, RawWindowHandle::Xcb(_) | RawWindowHandle::Xlib(_)) {
+            self.renderer.finish();
+        }
+    }
+
     fn draw_hyperlink_preview(
         &mut self,
         config: &UiConfig,
