@@ -721,6 +721,7 @@ impl Display {
         config: &UiConfig,
         tab_bar_lines: usize,
         top_tab_bar_lines: usize,
+        menu_bar_lines: usize,
         tab_title_editor_lines: usize,
     ) where
         T: EventListener,
@@ -771,7 +772,7 @@ impl Display {
         let message_bar_lines = message_buffer.message().map_or(0, |m| m.text(&new_size).len());
         let search_lines = usize::from(search_active);
         new_size.reserve_lines(
-            message_bar_lines + search_lines + tab_bar_lines + tab_title_editor_lines,
+            message_bar_lines + search_lines + tab_bar_lines + menu_bar_lines + tab_title_editor_lines,
         );
         new_size.add_top_padding(top_tab_bar_lines as f32 * new_size.cell_height());
 
@@ -1144,20 +1145,23 @@ impl Display {
             self.draw_tab_bar(config, tab_titles, line);
         }
 
-        // Draw menu bar — rendered like inactive tabs.
+        // Draw menu bar — same mechanism as tabs.
         self.menu_hit_boxes.clear();
         if !config.menu.items.is_empty() {
-            let metrics = self.glyph_cache.font_metrics();
             let search_lines =
                 usize::from(search_state.regex().is_some()) + tab_title_editor_offset;
             let message_lines =
                 message_buffer.message().map_or(0, |m| m.text(&size_info).len());
-            let menu_line = match config.menu.menu_bar_edge {
-                crate::config::menu::MenuBarEdge::Top => {
+            let menu_edge = match config.menu.menu_bar_edge {
+                crate::config::menu::MenuBarEdge::Top => TabBarEdge::Top,
+                crate::config::menu::MenuBarEdge::Bottom => TabBarEdge::Bottom,
+            };
+            let menu_line = match menu_edge {
+                TabBarEdge::Top => {
                     usize::from(config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Top)
                 },
-                crate::config::menu::MenuBarEdge::Bottom => {
+                TabBarEdge::Bottom => {
                     let base = size_info.screen_lines() + search_lines + message_lines;
                     if config.tabs.display_tab_bar(tab_titles.len())
                         && config.tabs.tab_bar_edge == TabBarEdge::Bottom
@@ -1169,82 +1173,18 @@ impl Display {
                 },
             };
 
-            let num_cols = size_info.columns();
-            let bar_bg = config.colors.primary.background * 0.8;
-            let inactive_fg = config.tabs.inactive_tab_foreground
-                .unwrap_or(config.colors.primary.foreground);
-            let inactive_bg = config.tabs.inactive_tab_background
-                .unwrap_or(bar_bg);
+            let menu_labels: Vec<(String, bool)> = config.menu.items.iter()
+                .map(|item| (item.label.clone(), false))
+                .collect();
 
-            let y = size_info.cell_height().mul_add(menu_line as f32, size_info.padding_y());
-            let height = size_info.cell_height();
-            let width = size_info.width();
-
-            self.damage_tracker.frame().add_viewport_rect(
-                &size_info, 0, y as i32, width as i32, height as i32);
-            self.damage_tracker.next_frame().add_viewport_rect(
-                &size_info, 0, y as i32, width as i32, height as i32);
-
-            self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-                0., y, width, height, bar_bg, 1.0,
-            )]);
-
-            // Top-level menu items.
-            let mut col = 0usize;
-            for (idx, item) in config.menu.items.iter().enumerate() {
-                let label = format!(" {} ", item.label);
-                let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
-                if col + w > num_cols { break; }
-                let x = size_info.padding_x() + size_info.cell_width() * col as f32;
-                let bw = size_info.cell_width() * w as f32;
-                self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-                    x, y, bw, height, inactive_bg, 1.0,
-                )]);
-                self.draw_string_with_flags(
-                    Point::new(menu_line, Column(col)),
-                    inactive_fg, inactive_bg, 0.0, &label, &size_info, Flags::empty(),
-                );
-                self.menu_hit_boxes.push(MenuHitBox {
-                    index: idx, x: x as i32, y: y as i32,
-                    width: bw as i32, height: height as i32, sub_index: None,
-                });
-                col += w;
-            }
-
-            // Submenu row.
-            if let Some(idx) = expanded_menu {
-                if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
-                    let sub_y = match config.menu.menu_bar_edge {
-                        crate::config::menu::MenuBarEdge::Bottom => y - height,
-                        crate::config::menu::MenuBarEdge::Top => y + height,
-                    };
-                    let sub_line = match config.menu.menu_bar_edge {
-                        crate::config::menu::MenuBarEdge::Bottom => menu_line.saturating_sub(1),
-                        crate::config::menu::MenuBarEdge::Top => menu_line + 1,
-                    };
-                    let mut sub_col = 0usize;
-                    for (sidx, sub) in config.menu.items[idx].submenu.iter().enumerate() {
-                        let label = format!(" {} ", sub.label);
-                        let w: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
-                        if sub_col + w > num_cols { break; }
-                        let sx = size_info.padding_x() + size_info.cell_width() * sub_col as f32;
-                        let sw = size_info.cell_width() * w as f32;
-                        self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
-                            sx, sub_y, sw, height, inactive_bg * 0.9, 1.0,
-                        )]);
-                        self.draw_string_with_flags(
-                            Point::new(menu_line + 1, Column(sub_col)),
-                            inactive_fg, inactive_bg * 0.9, 0.0,
-                            &label, &size_info, Flags::empty(),
-                        );
-                        self.menu_hit_boxes.push(MenuHitBox {
-                            index: idx, x: sx as i32, y: sub_y as i32,
-                            width: sw as i32, height: height as i32, sub_index: Some(sidx),
-                        });
-                        sub_col += w;
-                    }
-                }
-            }
+            let old_count = self.tab_hit_boxes.len();
+            self.draw_bar(config, &menu_labels, menu_line, menu_edge);
+            // Extract menu hit boxes.
+            self.menu_hit_boxes = self.tab_hit_boxes.drain(old_count..).map(|hb| MenuHitBox {
+                index: hb.index,
+                x: hb.x, y: hb.y, width: hb.width, height: hb.height,
+                sub_index: None,
+            }).collect();
         }
 
         self.draw_render_timer(config);
@@ -1624,8 +1564,18 @@ impl Display {
 
     #[inline(never)]
     fn draw_tab_bar(&mut self, config: &UiConfig, tab_titles: &[(String, bool)], line: usize) {
+        self.draw_bar(config, tab_titles, line, config.tabs.tab_bar_edge);
+    }
+
+    fn draw_bar(
+        &mut self,
+        config: &UiConfig,
+        titles: &[(String, bool)],
+        line: usize,
+        edge: TabBarEdge,
+    ) {
         let mut size_info = self.size_info;
-        if config.tabs.tab_bar_edge == TabBarEdge::Top {
+        if edge == TabBarEdge::Top {
             size_info.padding_y -= size_info.cell_height();
         }
 
@@ -1702,7 +1652,7 @@ impl Display {
         if config.tabs.tab_bar_style == TabBarStyle::Slant {
             let mut column = 0usize;
 
-            for (index, (title, active)) in tab_titles.iter().enumerate() {
+            for (index, (title, active)) in titles.iter().enumerate() {
                 if column >= num_cols {
                     break;
                 }
@@ -1717,7 +1667,7 @@ impl Display {
                 } else {
                     blend_rgb(config.colors.primary.background, tab_bg, translucent_alpha)
                 };
-                let next_bg = tab_titles
+                let next_bg = titles
                     .get(index + 1)
                     .map(|(_, active)| {
                         if *active {
@@ -1794,7 +1744,7 @@ impl Display {
             self.renderer.draw_rects(&size_info, &metrics, rects);
 
             let mut column = 0usize;
-            for (index, (title, active)) in tab_titles.iter().enumerate() {
+            for (index, (title, active)) in titles.iter().enumerate() {
                 if column >= num_cols {
                     break;
                 }
@@ -1809,7 +1759,7 @@ impl Display {
                 } else {
                     blend_rgb(config.colors.primary.background, tab_bg, translucent_alpha)
                 };
-                let next_bg = tab_titles
+                let next_bg = titles
                     .get(index + 1)
                     .map(|(_, active)| {
                         if *active {
@@ -1852,7 +1802,7 @@ impl Display {
 
         self.renderer.draw_rects(&size_info, &metrics, rects);
         let mut column = 0usize;
-        for (index, (title, active)) in tab_titles.iter().enumerate() {
+        for (index, (title, active)) in titles.iter().enumerate() {
             if column >= num_cols {
                 break;
             }
@@ -1873,7 +1823,7 @@ impl Display {
                 TabBarStyle::Powerline => 1,
                 TabBarStyle::Hidden => 0,
                 TabBarStyle::Separator | TabBarStyle::Fade => {
-                    if index + 1 < tab_titles.len() {
+                    if index + 1 < titles.len() {
                         config.tabs.tab_separator.chars().count()
                     } else {
                         0
@@ -1917,11 +1867,11 @@ impl Display {
 
             let separator_width = match config.tabs.tab_bar_style {
                 TabBarStyle::Powerline => {
-                    let next_bg = tab_titles
+                    let next_bg = titles
                         .get(index + 1)
                         .map(|(_, active)| if *active { active_bg } else { inactive_bg })
                         .unwrap_or(bar_bg);
-                    let separator = if index + 1 < tab_titles.len() {
+                    let separator = if index + 1 < titles.len() {
                         powerline_separator(config.tabs.tab_powerline_style)
                     } else {
                         trailing_powerline_separator(config.tabs.tab_powerline_style)
@@ -1937,7 +1887,7 @@ impl Display {
                         Flags::empty(),
                     )
                 },
-                TabBarStyle::Separator | TabBarStyle::Fade if index + 1 < tab_titles.len() => self
+                TabBarStyle::Separator | TabBarStyle::Fade if index + 1 < titles.len() => self
                     .draw_string_with_flags(
                         Point::new(line, Column(column)),
                         inactive_fg,

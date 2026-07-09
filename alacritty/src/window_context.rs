@@ -1358,6 +1358,8 @@ impl WindowContext {
             let tab_title_editor_lines =
                 usize::from(self.tab_title_editor.is_some() || self.run_editor.is_some());
             let active_index = self.active_tab;
+            let menu_bar_lines =
+                usize::from(!self.tabs[active_index].config.menu.items.is_empty());
             let tab_config = self.tabs[active_index].config.clone();
             let (display, tabs) = (&mut self.display, &mut self.tabs);
             let active_tab = &mut tabs[active_index];
@@ -1372,6 +1374,7 @@ impl WindowContext {
                 &tab_config,
                 tab_bar_lines,
                 tab_bar_at_top,
+                menu_bar_lines,
                 tab_title_editor_lines,
             );
             self.dirty = true;
@@ -1447,6 +1450,7 @@ impl WindowContext {
         config: &UiConfig,
         tab_bar_lines: usize,
         top_tab_bar_lines: usize,
+        menu_bar_lines: usize,
         tab_title_editor_lines: usize,
     ) {
         // Compute cursor positions before resize.
@@ -1466,6 +1470,7 @@ impl WindowContext {
             config,
             tab_bar_lines,
             top_tab_bar_lines,
+            menu_bar_lines,
             tab_title_editor_lines,
         );
 
