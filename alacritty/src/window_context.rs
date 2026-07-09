@@ -836,7 +836,8 @@ impl WindowContext {
             let cwd = std::fs::read_link(format!("/proc/{}/cwd", tab.shell_pid)).ok()
                 .map(|p| p.to_string_lossy().to_string());
             let additional: Vec<SavedPane> = tab.additional_panes.iter().map(|(id, pane)| {
-                SavedPane { pane_id: id.0, command: pane.command.clone() }
+                let fg = foreground_process_name(pane.master_fd, pane.shell_pid);
+                SavedPane { pane_id: id.0, command: fg.map(|n| vec![n]) }
             }).collect();
             SavedTab {
                 command: tab.command.clone(),
