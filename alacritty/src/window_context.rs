@@ -969,6 +969,11 @@ impl WindowContext {
 
         let active = session.active_tab.min(self.tabs.len().saturating_sub(1));
         self.set_active_tab(active);
+
+        // Full redraw after pane restoration to avoid damage tracker OOB.
+        self.display.damage_tracker.frame().mark_fully_damaged();
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.display.pending_update.dirty = true;
         self.dirty = true;
         Ok(())
     }
