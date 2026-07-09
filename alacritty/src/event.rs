@@ -784,7 +784,7 @@ impl MenuState {
         };
         labels.push((mode_label.to_string(), false));
 
-        if self.active || !self.path.is_empty() {
+        if self.active {
             let items = self.items_at(menu);
             for (i, item) in items.iter().enumerate() {
                 let focused = self.active && self.focus == i + 1;

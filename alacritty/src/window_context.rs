@@ -1501,6 +1501,9 @@ impl WindowContext {
 
         // Synchronous menu operations (no frame delay).
         for op in std::mem::take(&mut self.menu_op_pending) {
+            log::debug!("[menu-sync] op={:?} BEFORE: active={} path={:?} list={:?} focus={}",
+                op, self.menu_state.active, self.menu_state.path,
+                self.menu_state.list_mode.is_some(), self.menu_state.focus);
             match op {
                 MenuOp::FocusLeft => {
                     if self.menu_state.focus > 0 {
@@ -1538,6 +1541,8 @@ impl WindowContext {
                         let first_char = label.chars().next()
                             .map(|c| c.to_lowercase().next().unwrap_or(c));
                         if first_char == Some(ch_lower) {
+                            log::debug!("[menu-sync] LetterKey '{}' matched label '{}' at idx={}",
+                                ch, label, i);
                             self.menu_state.focus = i;
                             let sel = self.menu_state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
@@ -1547,6 +1552,9 @@ impl WindowContext {
                     self.dirty = true;
                 },
             }
+            log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={}",
+                op, self.menu_state.active, self.menu_state.path,
+                self.menu_state.list_mode.is_some(), self.menu_state.focus);
         }
 
         self.sync_focus();
