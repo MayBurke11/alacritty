@@ -91,6 +91,7 @@ struct TerminalTab {
     id: TabId,
     terminal: Arc<FairMutex<Term<EventProxy>>>,
     notifier: Notifier,
+    config: Rc<UiConfig>,
     terminal_title: Option<String>,
     detected_title: String,
     custom_title: Option<String>,
@@ -112,7 +113,7 @@ impl TerminalTab {
         id: TabId,
         window_id: WindowId,
         size_info: crate::display::SizeInfo,
-        config: &UiConfig,
+        config: Rc<UiConfig>,
         options: &WindowOptions,
         proxy: &EventLoopProxy<Event>,
     ) -> Result<Self, Box<dyn Error>> {
@@ -153,6 +154,7 @@ impl TerminalTab {
             master_fd,
             #[cfg(not(windows))]
             shell_pid,
+            config: config.clone(),
             notifier: Notifier(loop_tx),
             terminal_title: None,
             detected_title: Self::detected_title(
@@ -345,7 +347,7 @@ impl WindowContext {
         let cmd = cmd.trim().to_owned();
         if !cmd.is_empty() {
             let args: Vec<String> = cmd.split_whitespace().map(|s| s.to_owned()).collect();
-            let _ = self.create_tab_inner(Some(args), None, no_switch);
+            let _ = self.create_tab_inner(Some(args), None, no_switch, None);
         }
         self.display.pending_update.dirty = true;
         self.dirty = true;
@@ -509,7 +511,7 @@ impl WindowContext {
     }
 
     fn create_tab(&mut self) -> Result<(), Box<dyn Error>> {
-        self.create_tab_inner(None, None, false)
+        self.create_tab_inner(None, None, false, None)
     }
 
     /// Create a new tab via IPC with optional command, working directory, and no-switch flag.
@@ -517,7 +519,8 @@ impl WindowContext {
         let cmd = (!options.command.is_empty()).then(|| options.command.clone());
         let cwd = options.working_directory.clone();
         let no_switch = options.no_switch;
-        if let Err(err) = self.create_tab_inner(cmd, cwd, no_switch) {
+        let overrides = (!options.config_overrides.is_empty()).then(|| options.config_overrides.clone());
+        if let Err(err) = self.create_tab_inner(cmd, cwd, no_switch, overrides) {
             log::warn!("Failed to create tab via IPC: {err:?}");
         }
     }
@@ -526,7 +529,8 @@ impl WindowContext {
     pub fn quick_run_ipc(&mut self, options: crate::cli::TabQuickRun) {
         let cmd = (!options.command.is_empty()).then(|| options.command.clone());
         let no_switch = options.no_switch;
-        if let Err(err) = self.create_tab_inner(cmd, None, no_switch) {
+        let overrides = (!options.config_overrides.is_empty()).then(|| options.config_overrides.clone());
+        if let Err(err) = self.create_tab_inner(cmd, None, no_switch, overrides) {
             log::warn!("Failed to create tab via QuickRun IPC: {err:?}");
         }
     }
@@ -536,6 +540,7 @@ impl WindowContext {
         command: Option<Vec<String>>,
         working_directory: Option<PathBuf>,
         no_switch: bool,
+        config_overrides: Option<Vec<String>>,
     ) -> Result<(), Box<dyn Error>> {
         self.cancel_window_close_confirmation();
 
@@ -560,6 +565,20 @@ impl WindowContext {
             }
         }
 
+        // Per-tab config: if overrides provided, clone global and apply.
+        let tab_config = if let Some(ref overrides) = config_overrides {
+            if !overrides.is_empty() {
+                let mut overridden = (*self.config).clone();
+                let mut parsed = crate::cli::ParsedOptions::from_options(overrides);
+                parsed.override_config(&mut overridden);
+                Rc::new(overridden)
+            } else {
+                self.config.clone()
+            }
+        } else {
+            self.config.clone()
+        };
+
         // IPC-provided command.
         if let Some(cmd) = command {
             options.terminal_options.command = cmd;
@@ -569,7 +588,7 @@ impl WindowContext {
             tab_id,
             self.display.window.id(),
             self.display.size_info,
-            &self.config,
+            tab_config,
             &options,
             &self.event_proxy,
         ) {
@@ -583,7 +602,7 @@ impl WindowContext {
                     tab_id,
                     self.display.window.id(),
                     self.display.size_info,
-                    &self.config,
+                    self.config.clone(),
                     &fallback_options,
                     &self.event_proxy,
                 )?
@@ -857,7 +876,7 @@ impl WindowContext {
             TabId(0),
             display.window.id(),
             display.size_info,
-            &config,
+            config.clone(),
             &options,
             &proxy,
         )?;
@@ -893,7 +912,7 @@ impl WindowContext {
                 args.extend(p.args().iter().cloned());
                 args
             });
-            let _ = wc.create_tab_inner(cmd, None, preset.no_switch);
+            let _ = wc.create_tab_inner(cmd, None, preset.no_switch, None);
         }
 
         Ok(wc)
@@ -1046,14 +1065,15 @@ impl WindowContext {
             })
             .collect();
         let active_tab = self.active_tab;
-        let (display, tabs, config) = (&mut self.display, &mut self.tabs, &self.config);
+        let tab_config = self.tabs[active_tab].config.clone();
+        let (display, tabs) = (&mut self.display, &mut self.tabs);
         let active_tab = &mut tabs[active_tab];
         let terminal = active_tab.terminal.lock();
         display.draw(
             terminal,
             scheduler,
             &active_tab.message_buffer,
-            config,
+            &tab_config,
             &mut active_tab.search_state,
             &tab_titles,
             self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
@@ -1180,7 +1200,7 @@ impl WindowContext {
                 #[cfg(not(windows))]
                 shell_pid: tab.shell_pid,
                 preserve_title: self.preserve_title,
-                config: &self.config,
+                config: &*tab.config,
                 event_proxy: &self.event_proxy,
                 #[cfg(target_os = "macos")]
                 event_loop,
@@ -1200,7 +1220,8 @@ impl WindowContext {
             let tab_title_editor_lines =
                 usize::from(self.tab_title_editor.is_some() || self.run_editor.is_some());
             let active_index = self.active_tab;
-            let (display, tabs, config) = (&mut self.display, &mut self.tabs, &self.config);
+            let tab_config = self.tabs[active_index].config.clone();
+            let (display, tabs) = (&mut self.display, &mut self.tabs);
             let active_tab = &mut tabs[active_index];
             let mut terminal = active_tab.terminal.lock();
             Self::submit_display_update(
@@ -1210,7 +1231,7 @@ impl WindowContext {
                 &active_tab.message_buffer,
                 &mut active_tab.search_state,
                 old_is_searching,
-                config,
+                &tab_config,
                 tab_bar_lines,
                 tab_bar_at_top,
                 tab_title_editor_lines,
@@ -1220,12 +1241,13 @@ impl WindowContext {
 
         if self.dirty || self.mouse.hint_highlight_dirty {
             let active_index = self.active_tab;
-            let (display, tabs, config) = (&mut self.display, &mut self.tabs, &self.config);
+            let tab_config = self.tabs[active_index].config.clone();
+            let (display, tabs) = (&mut self.display, &mut self.tabs);
             let active_tab = &mut tabs[active_index];
             let terminal = active_tab.terminal.lock();
             self.dirty |= display.update_highlighted_hints(
                 &terminal,
-                config,
+                &tab_config,
                 &self.mouse,
                 self.modifiers.state(),
             );

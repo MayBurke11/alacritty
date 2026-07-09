@@ -296,6 +296,10 @@ pub struct TabCreateOptions {
     #[clap(long)]
     pub no_switch: bool,
 
+    /// Config overrides for this tab [example: 'colors.primary.background="#000"'].
+    #[clap(short = 'o', long = "option", num_args = 1..)]
+    pub config_overrides: Vec<String>,
+
     /// Target window ID.
     #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
     pub window_id: Option<i128>,
@@ -312,6 +316,10 @@ pub struct TabQuickRun {
     /// Do not switch to the new tab.
     #[clap(long)]
     pub no_switch: bool,
+
+    /// Config overrides for this tab [example: 'colors.primary.background="#000"'].
+    #[clap(short = 'o', long = "option", num_args = 1..)]
+    pub config_overrides: Vec<String>,
 
     /// Target window ID.
     #[clap(short, long, allow_hyphen_values = true, env = "ALACRITTY_WINDOW_ID")]
