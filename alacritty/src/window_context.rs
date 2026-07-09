@@ -1706,6 +1706,14 @@ impl WindowContext {
                 menu_bar_lines,
                 tab_title_editor_lines,
             );
+            // Also resize active pane's terminal if it's not pane 0.
+            if active_tab.active_pane != PaneId(0) {
+                if let Some(pane) = active_tab.additional_panes.get_mut(&active_tab.active_pane) {
+                    let mut t = pane.terminal.lock();
+                    t.resize(display.size_info);
+                    let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(display.size_info.into()));
+                }
+            }
             self.dirty = true;
         }
 
