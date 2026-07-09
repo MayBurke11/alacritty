@@ -287,6 +287,8 @@ pub struct WindowContext {
     menu_op_pending: Vec<MenuOp>,
     /// Divider drag state: (tab_idx, split_id, direction, start_x, start_y, start_ratio).
     divider_drag: Option<(usize, crate::pane_tree::SplitId, SplitDir, f32, f32, f32)>,
+    /// Alt+arrows resize panes instead of focusing.
+    pane_resize_mode: bool,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -745,6 +747,10 @@ impl WindowContext {
                     "focus-right" => self.focus_pane(FocusDir::Right),
                     "focus-up" => self.focus_pane(FocusDir::Up),
                     "focus-down" => self.focus_pane(FocusDir::Down),
+                    "resize-mode" => {
+                        self.pane_resize_mode = !self.pane_resize_mode;
+                        log::info!("[panes] resize mode: {}", self.pane_resize_mode);
+                    },
                     _ => {},
                 }
             },
@@ -1132,6 +1138,7 @@ impl WindowContext {
             menu_toggle_pending: false,
             menu_op_pending: Vec::new(),
             divider_drag: None,
+            pane_resize_mode: false,
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
@@ -1648,6 +1655,7 @@ impl WindowContext {
                 menu_active: self.menu_state.active,
                 menu_toggle_pending: &mut self.menu_toggle_pending,
                 menu_op_pending: &mut self.menu_op_pending,
+                pane_resize_mode: &mut self.pane_resize_mode,
                 config: &*tab.config,
                 event_proxy: &self.event_proxy,
                 #[cfg(target_os = "macos")]
@@ -1944,6 +1952,7 @@ impl WindowContext {
     }
 
     fn split_pane(&mut self, direction: SplitDir) {
+        log::info!("[panes] split {:?}", direction);
         use crate::pane_tree::Rect;
         let new_pane_id = PaneId(self.active_tab().next_pane_id);
         let full_size_info = self.display.size_info;
@@ -2005,6 +2014,7 @@ impl WindowContext {
     }
 
     fn close_pane(&mut self) {
+        log::info!("[panes] close");
         let leaves_before = self.active_tab().pane_tree.leaf_ids().len();
         if leaves_before <= 1 { return; }
         let pane_to_close = self.active_tab().active_pane;
@@ -2040,6 +2050,7 @@ impl WindowContext {
     }
 
     fn focus_pane(&mut self, direction: FocusDir) {
+        log::info!("[panes] focus {:?}", direction);
         use crate::pane_tree::Rect;
         let tab = self.active_tab(); let leaves = tab.pane_tree.leaf_ids();
         if leaves.len() <= 1 { return; }
@@ -2076,6 +2087,7 @@ impl WindowContext {
     }
 
     fn toggle_zoom(&mut self) {
+        log::info!("[panes] zoom toggle");
         use crate::pane_tree::Rect;
         let size_info = self.display.size_info;
         let viewport_w = size_info.width() as f32; let viewport_h = size_info.height() as f32;

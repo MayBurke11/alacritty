@@ -1073,6 +1073,7 @@ pub struct ActionContext<'a, N, T> {
     pub menu_active: bool,
     pub menu_toggle_pending: &'a mut bool,
     pub menu_op_pending: &'a mut Vec<MenuOp>,
+    pub pane_resize_mode: &'a mut bool,
     #[cfg(not(windows))]
     pub master_fd: RawFd,
     #[cfg(not(windows))]
@@ -1527,6 +1528,10 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
 
     fn menu_letter_key(&mut self, ch: char) {
         self.menu_op_pending.push(MenuOp::LetterKey(ch));
+    }
+
+    fn pane_resize_mode(&mut self) -> &mut bool {
+        self.pane_resize_mode
     }
 
     fn confirm_run(&mut self, no_switch: bool) {
