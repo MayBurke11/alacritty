@@ -198,7 +198,9 @@ impl PaneNode {
                 match result_b {
                     SearchResult::Found => {
                         if *direction == dir {
-                            let sign = if grow { -1.0 } else { 1.0 };
+                            // Arrow direction = divider movement direction.
+                            // grow=true moves divider right/down (ratio increases).
+                            let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
                             return SearchResult::Adjusted;
                         }
