@@ -106,6 +106,42 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         // Reset search delay when the user is still typing.
         self.reset_search_delay();
 
+        // Menu modal key interception: Ctrl+G always toggles locked/unlocked.
+        if mods.control_key()
+            && matches!(key.logical_key.as_ref(), Key::Character("g"))
+            && !mods.alt_key()
+            && !mods.super_key()
+        {
+            self.ctx.toggle_locked();
+            return;
+        }
+
+        // Menu modal navigation: ALT+arrows, Enter, Escape when menu is active.
+        if self.ctx.is_menu_active() {
+            match key.logical_key.as_ref() {
+                Key::Named(NamedKey::Escape) => {
+                    self.ctx.menu_back();
+                    return;
+                },
+                Key::Named(NamedKey::Enter) => {
+                    self.ctx.menu_select();
+                    return;
+                },
+                Key::Named(NamedKey::ArrowLeft) if mods.alt_key() => {
+                    self.ctx.menu_focus_left();
+                    return;
+                },
+                Key::Named(NamedKey::ArrowRight) if mods.alt_key() => {
+                    self.ctx.menu_focus_right();
+                    return;
+                },
+                _ => {
+                    // All other keys are suppressed in menu active mode.
+                    return;
+                },
+            }
+        }
+
         // Key bindings suppress the character input.
         if self.process_key_bindings(&key) {
             return;

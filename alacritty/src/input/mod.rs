@@ -126,8 +126,15 @@ pub trait ActionContext<T: EventListener> {
     fn menu_at_mouse(&mut self) -> Option<(usize, Option<usize>)> {
         None
     }
-    fn toggle_menu(&mut self, _idx: usize) {}
-    fn menu_command(&mut self, _idx: usize, _sub_idx: usize) {}
+    fn is_menu_active(&self) -> bool {
+        false
+    }
+    fn toggle_locked(&mut self) {}
+    fn menu_focus_left(&mut self) {}
+    fn menu_focus_right(&mut self) {}
+    fn menu_select(&mut self) {}
+    fn menu_back(&mut self) {}
+    fn menu_click(&mut self, _idx: usize) {}
     fn tab_title_editor_active(&self) -> bool {
         false
     }
@@ -521,6 +528,7 @@ impl<T: EventListener> Execute<T> for Action {
             Action::SetTabTitle => ctx.set_tab_title(),
             Action::QuickRun => ctx.quick_run(),
             Action::TogglePin => ctx.toggle_pin_tab(),
+            Action::ToggleLocked => ctx.toggle_locked(),
             _ => (),
         }
     }
@@ -1075,12 +1083,8 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             && button == MouseButton::Left
             && self.ctx.config().tabs.mouse.enabled
         {
-            if let Some((menu_idx, sub_idx)) = self.ctx.menu_at_mouse() {
-                if let Some(sidx) = sub_idx {
-                    self.ctx.menu_command(menu_idx, sidx);
-                } else {
-                    self.ctx.toggle_menu(menu_idx);
-                }
+            if let Some((menu_idx, _sub_idx)) = self.ctx.menu_at_mouse() {
+                self.ctx.menu_click(menu_idx);
                 self.ctx.window().set_mouse_cursor(CursorIcon::Pointer);
                 return;
             }

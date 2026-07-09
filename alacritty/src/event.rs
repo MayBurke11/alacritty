@@ -703,6 +703,104 @@ pub enum TabAction {
     TogglePin,
     ToggleMenu(usize),
     MenuCommand(usize, usize),
+    ToggleLocked,
+    MenuFocusLeft,
+    MenuFocusRight,
+    MenuSelect,
+    MenuBack,
+    MenuClick(usize),
+}
+
+/// Modal menu state.
+#[derive(Clone, Debug, Default)]
+pub struct MenuState {
+    /// Whether the menu bar is in interactive/normal mode (unlocked).
+    pub active: bool,
+    /// Currently focused item index within the current level (0 = mode indicator).
+    pub focus: usize,
+    /// Path of expanded submenus into the menu config tree.
+    /// Empty = top level.
+    pub path: Vec<usize>,
+}
+
+impl MenuState {
+    /// Get the labels for the current bar level.
+    pub fn bar_labels(&self, menu: &crate::config::menu::Menu) -> Vec<(String, bool)> {
+        let mut labels: Vec<(String, bool)> = Vec::new();
+        let mode_label = if self.active {
+            if self.path.is_empty() { "ACTIVE" } else { " BACK " }
+        } else {
+            "LOCKED"
+        };
+        labels.push((mode_label.to_string(), false));
+
+        if self.active || !self.path.is_empty() {
+            let items = self.items_at(menu);
+            for (i, item) in items.iter().enumerate() {
+                let focused = self.active && self.focus == i + 1;
+                labels.push((item.label.clone(), focused));
+            }
+        }
+
+        labels
+    }
+
+    /// Navigate into submenu at the focused item.
+    /// Returns true if navigated, false if command was executed.
+    pub fn select(&mut self, menu: &crate::config::menu::Menu) -> Option<Option<crate::config::ui_config::Program>> {
+        if self.focus == 0 {
+            // Mode indicator — toggle active
+            self.active = !self.active;
+            if !self.active {
+                self.path.clear();
+            }
+            return None;
+        }
+        let item_idx = self.focus - 1;
+        let items = self.items_at(menu);
+        if item_idx >= items.len() {
+            return None;
+        }
+        let item = &items[item_idx];
+        if !item.submenu.is_empty() {
+            self.path.push(item_idx);
+            self.focus = 0;
+            None
+        } else {
+            let cmd = item.command.clone();
+            self.path.clear();
+            self.focus = 0;
+            self.active = false;
+            Some(cmd)
+        }
+    }
+
+    /// Go back one level, or deactivate if at top.
+    pub fn back(&mut self) {
+        if self.path.is_empty() {
+            self.active = false;
+        } else {
+            self.path.pop();
+        }
+        self.focus = 0;
+    }
+
+    fn items_at<'a>(&self, menu: &'a crate::config::menu::Menu) -> &'a [crate::config::menu::MenuItem] {
+        let mut items: &[crate::config::menu::MenuItem] = &menu.items;
+        for &idx in &self.path {
+            if idx < items.len() {
+                items = &items[idx].submenu;
+            } else {
+                return &[];
+            }
+        }
+        items
+    }
+
+    /// Count of items currently visible (excluding mode indicator).
+    pub fn item_count(&self, menu: &crate::config::menu::Menu) -> usize {
+        self.items_at(menu).len()
+    }
 }
 
 /// Regex search state.
@@ -828,6 +926,7 @@ pub struct ActionContext<'a, N, T> {
     pub dirty: &'a mut bool,
     pub occluded: &'a mut bool,
     pub preserve_title: bool,
+    pub menu_active: bool,
     #[cfg(not(windows))]
     pub master_fd: RawFd,
     #[cfg(not(windows))]
@@ -1168,16 +1267,48 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         ));
     }
 
-    fn toggle_menu(&mut self, idx: usize) {
+    fn is_menu_active(&self) -> bool {
+        self.menu_active
+    }
+
+    fn toggle_locked(&mut self) {
         let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::ToggleMenu(idx)),
+            EventType::Tab(TabAction::ToggleLocked),
             self.display.window.id(),
         ));
     }
 
-    fn menu_command(&mut self, idx: usize, sub_idx: usize) {
+    fn menu_focus_left(&mut self) {
         let _ = self.event_proxy.send_event(Event::new(
-            EventType::Tab(TabAction::MenuCommand(idx, sub_idx)),
+            EventType::Tab(TabAction::MenuFocusLeft),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_focus_right(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuFocusRight),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_select(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuSelect),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_back(&mut self) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuBack),
+            self.display.window.id(),
+        ));
+    }
+
+    fn menu_click(&mut self, idx: usize) {
+        let _ = self.event_proxy.send_event(Event::new(
+            EventType::Tab(TabAction::MenuClick(idx)),
             self.display.window.id(),
         ));
     }

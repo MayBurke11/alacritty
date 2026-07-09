@@ -265,6 +265,9 @@ pub enum Action {
     /// Toggle pin on active tab.
     TogglePin,
 
+    /// Toggle menu bar between locked and unlocked.
+    ToggleLocked,
+
     /// No action.
     None,
 }
@@ -587,6 +590,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
+        "g",        ModifiersState::CONTROL;                                                             Action::ToggleLocked;
     )
 }
 

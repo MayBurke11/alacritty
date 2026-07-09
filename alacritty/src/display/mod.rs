@@ -851,7 +851,7 @@ impl Display {
         tab_titles: &[(String, bool)],
         tab_title_editor: Option<&str>,
         run_editor: Option<&str>,
-        expanded_menu: Option<usize>,
+        menu_state: &crate::event::MenuState,
     ) {
         // Collect renderable content before the terminal is dropped.
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
@@ -1145,7 +1145,7 @@ impl Display {
             self.draw_tab_bar(config, tab_titles, line);
         }
 
-        // Draw menu bar — same mechanism as tabs.
+        // Draw menu bar — single row, labels change based on modal state.
         self.menu_hit_boxes.clear();
         if !config.menu.items.is_empty() {
             let search_lines =
@@ -1173,40 +1173,15 @@ impl Display {
                 },
             };
 
-            let menu_labels: Vec<(String, bool)> = config.menu.items.iter()
-                .map(|item| (item.label.clone(), false))
-                .collect();
+            let bar_labels = menu_state.bar_labels(&config.menu);
 
             let old_count = self.tab_hit_boxes.len();
-            self.draw_bar(config, &menu_labels, menu_line, menu_edge);
-            // Extract menu hit boxes.
+            self.draw_bar(config, &bar_labels, menu_line, menu_edge);
             self.menu_hit_boxes = self.tab_hit_boxes.drain(old_count..).map(|hb| MenuHitBox {
                 index: hb.index,
                 x: hb.x, y: hb.y, width: hb.width, height: hb.height,
                 sub_index: None,
             }).collect();
-
-            // Submenu row.
-            if let Some(idx) = expanded_menu {
-                if idx < config.menu.items.len() && !config.menu.items[idx].submenu.is_empty() {
-                    let sub_line = match menu_edge {
-                        TabBarEdge::Bottom => menu_line.saturating_sub(1),
-                        TabBarEdge::Top => menu_line + 1,
-                    };
-                    let sub_labels: Vec<(String, bool)> = config.menu.items[idx].submenu.iter()
-                        .map(|sub| (sub.label.clone(), false))
-                        .collect();
-                    let old_count2 = self.tab_hit_boxes.len();
-                    self.draw_bar(config, &sub_labels, sub_line, menu_edge);
-                    self.menu_hit_boxes.extend(
-                        self.tab_hit_boxes.drain(old_count2..).map(|hb| MenuHitBox {
-                            index: idx,
-                            x: hb.x, y: hb.y, width: hb.width, height: hb.height,
-                            sub_index: Some(hb.index),
-                        })
-                    );
-                }
-            }
         }
 
         self.draw_render_timer(config);
@@ -1642,34 +1617,6 @@ impl Display {
             rendered_bar_bg,
             translucent_alpha,
         )];
-        let active_fg =
-            config.tabs.active_tab_foreground.unwrap_or(config.colors.footer_bar_foreground());
-        let active_bg =
-            config.tabs.active_tab_background.unwrap_or(config.colors.footer_bar_background());
-        let inactive_fg =
-            config.tabs.inactive_tab_foreground.unwrap_or(config.colors.primary.foreground);
-        let default_inactive_bg = if config.window_opacity() < 1.0 {
-            darken_rgb(bar_bg, 0.82)
-        } else {
-            bar_bg
-        };
-        let inactive_bg = config.tabs.inactive_tab_background.unwrap_or(default_inactive_bg);
-
-        let y = size_info.cell_height().mul_add(line as f32, size_info.padding_y()) as i32;
-        let width = size_info.width() as i32;
-        let height = size_info.cell_height() as i32;
-        self.damage_tracker.frame().add_viewport_rect(&size_info, 0, y, width, height);
-        self.damage_tracker.next_frame().add_viewport_rect(&size_info, 0, y, width, height);
-
-        let metrics = self.glyph_cache.font_metrics();
-        let mut rects = vec![RenderRect::new(
-            0.,
-            y as f32,
-            width as f32,
-            height as f32,
-            rendered_bar_bg,
-            translucent_alpha,
-        )];
 
         if config.tabs.tab_bar_style == TabBarStyle::Slant {
             let mut column = 0usize;
@@ -1781,7 +1728,7 @@ impl Display {
                 } else {
                     blend_rgb(config.colors.primary.background, tab_bg, translucent_alpha)
                 };
-                let next_bg = titles
+                let _next_bg = titles
                     .get(index + 1)
                     .map(|(_, active)| {
                         if *active {

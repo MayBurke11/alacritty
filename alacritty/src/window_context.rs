@@ -41,8 +41,8 @@ use crate::daemon::foreground_process_path;
 use crate::display::Display;
 use crate::display::window::Window;
 use crate::event::{
-    ActionContext, Event, EventProxy, EventType, InlineSearchState, Mouse, SearchState, TabAction,
-    TabId, TouchPurpose,
+    ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuState, Mouse, SearchState,
+    TabAction, TabId, TouchPurpose,
 };
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
@@ -266,8 +266,8 @@ pub struct WindowContext {
     last_active_tab_id: Option<TabId>,
     tab_title_editor: Option<TabTitleEditor>,
     run_editor: Option<String>,
-    /// Index of expanded top-level menu item, or None if all collapsed.
-    expanded_menu: Option<usize>,
+    /// Modal menu state.
+    menu_state: MenuState,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -1013,7 +1013,7 @@ impl WindowContext {
             last_active_tab_id: None,
             tab_title_editor: None,
             run_editor: None,
-            expanded_menu: None,
+            menu_state: MenuState::default(),
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
@@ -1193,7 +1193,7 @@ impl WindowContext {
             &tab_titles,
             self.tab_title_editor.as_ref().map(|editor| editor.value.as_str()),
             self.run_editor.as_deref(),
-            self.expanded_menu,
+            &self.menu_state,
         );
     }
 
@@ -1277,23 +1277,60 @@ impl WindowContext {
                         TabAction::RunPopWord => self.run_editor_pop_word(),
                         TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
                         TabAction::ToggleMenu(idx) => {
-                            self.expanded_menu = if self.expanded_menu == Some(*idx) {
-                                None
-                            } else {
-                                Some(*idx)
-                            };
+                            self.menu_state.focus = *idx;
+                            let cmd = self.menu_state.select(&self.config.menu);
+                            if let Some(Some(program)) = cmd {
+                                let _ = std::process::Command::new(program.program())
+                                    .args(program.args())
+                                    .spawn();
+                            }
                             self.dirty = true;
                         },
-                        TabAction::MenuCommand(idx, sub_idx) => {
-                            self.expanded_menu = None;
-                            if let Some(item) = self.config.menu.items.get(*idx) {
-                                if let Some(sub) = item.submenu.get(*sub_idx) {
-                                    if let Some(ref cmd) = sub.command {
-                                        let _ = std::process::Command::new(cmd.program())
-                                            .args(cmd.args())
-                                            .spawn();
-                                    }
-                                }
+                        TabAction::MenuCommand(_idx, _sub_idx) => {
+                            // Legacy — handled by MenuClick now.
+                            self.dirty = true;
+                        },
+                        TabAction::ToggleLocked => {
+                            self.menu_state.active = !self.menu_state.active;
+                            if !self.menu_state.active {
+                                self.menu_state.path.clear();
+                                self.menu_state.focus = 0;
+                            }
+                            self.dirty = true;
+                        },
+                        TabAction::MenuFocusLeft => {
+                            if self.menu_state.focus > 0 {
+                                self.menu_state.focus -= 1;
+                            }
+                            self.dirty = true;
+                        },
+                        TabAction::MenuFocusRight => {
+                            let count = self.menu_state.item_count(&self.config.menu);
+                            if self.menu_state.focus + 1 <= count {
+                                self.menu_state.focus += 1;
+                            }
+                            self.dirty = true;
+                        },
+                        TabAction::MenuSelect => {
+                            let cmd = self.menu_state.select(&self.config.menu);
+                            if let Some(Some(program)) = cmd {
+                                let _ = std::process::Command::new(program.program())
+                                    .args(program.args())
+                                    .spawn();
+                            }
+                            self.dirty = true;
+                        },
+                        TabAction::MenuBack => {
+                            self.menu_state.back();
+                            self.dirty = true;
+                        },
+                        TabAction::MenuClick(idx) => {
+                            self.menu_state.focus = *idx;
+                            let cmd = self.menu_state.select(&self.config.menu);
+                            if let Some(Some(program)) = cmd {
+                                let _ = std::process::Command::new(program.program())
+                                    .args(program.args())
+                                    .spawn();
                             }
                             self.dirty = true;
                         },
@@ -1338,6 +1375,7 @@ impl WindowContext {
                 #[cfg(not(windows))]
                 shell_pid: tab.shell_pid,
                 preserve_title: self.preserve_title,
+                menu_active: self.menu_state.active,
                 config: &*tab.config,
                 event_proxy: &self.event_proxy,
                 #[cfg(target_os = "macos")]
