@@ -1378,6 +1378,7 @@ impl WindowContext {
                             self.menu_state.active = !self.menu_state.active;
                             if !self.menu_state.active {
                                 self.menu_state.path.clear();
+                                self.menu_state.list_mode = None;
                                 self.menu_state.focus = 0;
                             }
                             self.dirty = true;
