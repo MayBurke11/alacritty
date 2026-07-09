@@ -1934,7 +1934,7 @@ impl Display {
         }
     }
 
-    /// Draw a simple menu bar with labels.
+    /// Draw a menu bar styled like the tab bar.
     fn draw_menu_bar(
         &mut self,
         config: &UiConfig,
@@ -1954,14 +1954,18 @@ impl Display {
             &size_info, 0, y as i32, size_info.width() as i32, height as i32,
         );
 
+        // Use same colors as inactive tabs.
         let bar_bg = config.colors.primary.background * 0.8;
+        let fg = config.colors.primary.foreground;
+        let inactive_bg = config.tabs.inactive_tab_background.unwrap_or(bar_bg);
+        let inactive_fg = config.tabs.inactive_tab_foreground.unwrap_or(fg);
+
+        // Background bar.
         self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
             0., y, size_info.width(), height, bar_bg, 1.0,
         )]);
 
-        let fg = config.colors.primary.foreground * 0.7;
         let mut column = 0usize;
-
         for (_idx, item) in items.iter().enumerate() {
             let label = format!(" {} ", item.label);
             let label_width: usize = label.chars().map(|c| c.width().unwrap_or(1)).sum();
@@ -1969,10 +1973,18 @@ impl Display {
                 break;
             }
 
+            let body_x = size_info.padding_x() + size_info.cell_width() * column as f32;
+            let body_width = size_info.cell_width() * label_width as f32;
+
+            // Tab-style background for each item.
+            self.renderer.draw_rects(&size_info, &metrics, vec![RenderRect::new(
+                body_x, y, body_width, height, inactive_bg, 1.0,
+            )]);
+
             self.draw_string_with_flags(
                 Point::new(line, Column(column)),
-                fg,
-                bar_bg,
+                inactive_fg,
+                inactive_bg,
                 0.0,
                 &label,
                 &size_info,
