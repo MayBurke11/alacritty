@@ -1942,8 +1942,8 @@ impl WindowContext {
         // Resize remaining pane(s) to full viewport.
         let remaining = self.active_tab().pane_tree.leaf_ids().len();
         if remaining == 1 {
-            let tab = self.active_tab_mut();
             let size_info = self.display.size_info;
+            let tab = self.active_tab_mut();
             if tab.active_pane == PaneId(0) {
                 let mut t = tab.terminal.lock();
                 t.resize(size_info);
