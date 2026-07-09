@@ -44,6 +44,8 @@ use crate::event::{
     ActionContext, Event, EventProxy, EventType, InlineSearchState, MenuOp, MenuSelection,
     MenuState, Mouse, SearchState, TabAction, TabId, TouchPurpose,
 };
+use crate::pane_state::PaneState;
+use crate::pane_tree::{FocusDir, PaneId, PaneNode, SplitDir};
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
 use crate::message_bar::{Message, MessageBuffer, MessageType};
@@ -105,6 +107,12 @@ struct TerminalTab {
     prev_bell_cmd: Option<Instant>,
     inline_search_state: InlineSearchState,
     search_state: SearchState,
+    // Pane management.
+    pane_tree: PaneNode,
+    active_pane: PaneId,
+    additional_panes: std::collections::HashMap<PaneId, PaneState>,
+    next_pane_id: u64,
+    zoomed_pane: Option<PaneId>,
     #[cfg(not(windows))]
     master_fd: RawFd,
     #[cfg(not(windows))]
@@ -176,6 +184,11 @@ impl TerminalTab {
             inline_search_state: Default::default(),
             message_buffer: Default::default(),
             search_state: Default::default(),
+            pane_tree: PaneNode::leaf(PaneId(0)),
+            active_pane: PaneId(0),
+            additional_panes: Default::default(),
+            next_pane_id: 1,
+            zoomed_pane: None,
         })
     }
 
@@ -272,6 +285,8 @@ pub struct WindowContext {
     menu_toggle_pending: bool,
     /// Pending synchronous menu operation (no frame delay).
     menu_op_pending: Vec<MenuOp>,
+    /// Divider drag state: (tab_idx, split_id, direction, start_x, start_y, start_ratio).
+    divider_drag: Option<(usize, crate::pane_tree::SplitId, SplitDir, f32, f32, f32)>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -1108,6 +1123,7 @@ impl WindowContext {
             menu_state: MenuState::default(),
             menu_toggle_pending: false,
             menu_op_pending: Vec::new(),
+            divider_drag: None,
             window_close_confirmation_pending: false,
             focused: false,
             event_proxy: proxy,
@@ -1436,21 +1452,19 @@ impl WindowContext {
                             }
                             self.dirty = true;
                         },
-                        // Pane actions (no-op for now, implemented in tiling phase).
-                        TabAction::SplitRight
-                        | TabAction::SplitDown
-                        | TabAction::ClosePane
-                        | TabAction::FocusLeft
-                        | TabAction::FocusRight
-                        | TabAction::FocusUp
-                        | TabAction::FocusDown
-                        | TabAction::ToggleZoom
-                        | TabAction::ResizeRight
-                        | TabAction::ResizeLeft
-                        | TabAction::ResizeUp
-                        | TabAction::ResizeDown => {
-                            log::debug!("[pane] action={:?} (not yet implemented)", action);
-                        },
+                        // Pane actions.
+                        TabAction::SplitRight => self.split_pane(SplitDir::Horizontal),
+                        TabAction::SplitDown => self.split_pane(SplitDir::Vertical),
+                        TabAction::ClosePane => self.close_pane(),
+                        TabAction::FocusLeft => self.focus_pane(FocusDir::Left),
+                        TabAction::FocusRight => self.focus_pane(FocusDir::Right),
+                        TabAction::FocusUp => self.focus_pane(FocusDir::Up),
+                        TabAction::FocusDown => self.focus_pane(FocusDir::Down),
+                        TabAction::ToggleZoom => self.toggle_zoom(),
+                        TabAction::ResizeRight => self.resize_pane(SplitDir::Horizontal, true),
+                        TabAction::ResizeLeft => self.resize_pane(SplitDir::Horizontal, false),
+                        TabAction::ResizeUp => self.resize_pane(SplitDir::Vertical, false),
+                        TabAction::ResizeDown => self.resize_pane(SplitDir::Vertical, true),
                     }
                     continue;
                 },
@@ -1716,8 +1730,255 @@ impl WindowContext {
             }
         }
     }
-}
 
+    // ----- Pane helpers -----
+
+    fn active_terminal(&self) -> Arc<FairMutex<Term<EventProxy>>> {
+        let tab = self.active_tab();
+        if tab.active_pane == PaneId(0) {
+            Arc::clone(&tab.terminal)
+        } else if let Some(pane) = tab.additional_panes.get(&tab.active_pane) {
+            Arc::clone(&pane.terminal)
+        } else {
+            Arc::clone(&tab.terminal)
+        }
+    }
+
+    fn active_terminal_for(&self, tab: &TerminalTab, pane_id: PaneId) -> Arc<FairMutex<Term<EventProxy>>> {
+        if pane_id == PaneId(0) {
+            Arc::clone(&tab.terminal)
+        } else if let Some(pane) = tab.additional_panes.get(&pane_id) {
+            Arc::clone(&pane.terminal)
+        } else {
+            Arc::clone(&tab.terminal)
+        }
+    }
+
+    fn pane_at_position(&self, tab: &TerminalTab, size_info: &crate::display::SizeInfo, x: f32, y: f32) -> Option<PaneId> {
+        use crate::pane_tree::Rect;
+        if tab.pane_tree.leaf_ids().len() <= 1 { return Some(tab.active_pane); }
+        let viewport = Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects(viewport);
+        for (pane_id, rect) in &pane_rects {
+            if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+                return Some(*pane_id);
+            }
+        }
+        None
+    }
+
+    fn divider_at_position(&self, tab: &TerminalTab, size_info: &crate::display::SizeInfo, x: f32, y: f32) -> Option<crate::pane_tree::SplitId> {
+        use crate::pane_tree::Rect;
+        let viewport = Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
+        let (_, divider_rects) = tab.pane_tree.leaf_rects(viewport);
+        for (i, rect) in divider_rects.iter().enumerate() {
+            let margin = 1.0;
+            if x >= rect.x - margin && x < rect.x + rect.width + margin
+                && y >= rect.y - margin && y < rect.y + rect.height + margin
+            {
+                return tab.pane_tree.find_split_by_divider_index(i);
+            }
+        }
+        None
+    }
+
+    fn split_pane(&mut self, direction: SplitDir) {
+        use crate::pane_tree::Rect;
+        let new_pane_id = PaneId(self.active_tab().next_pane_id);
+        let full_size_info = self.display.size_info;
+        let cell_w = full_size_info.cell_width();
+        let cell_h = full_size_info.cell_height();
+        let padding_x = full_size_info.padding_x();
+        let padding_y = full_size_info.padding_y();
+        let viewport_w = full_size_info.width() as f32;
+        let viewport_h = full_size_info.height() as f32;
+        let config = Rc::clone(&self.config);
+        let window_id = self.display.window.id();
+        let event_loop_proxy = self.event_proxy.clone();
+        let tab_id = self.active_tab().id;
+        let tab = self.active_tab_mut();
+        tab.next_pane_id += 1;
+        let split_id = crate::pane_tree::SplitId(tab.next_pane_id);
+        tab.next_pane_id += 1;
+        tab.pane_tree.split(tab.active_pane, new_pane_id, split_id, direction);
+        let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+        for (pane_id, rect) in &pane_rects {
+            if *pane_id == new_pane_id { continue; }
+            let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
+            if *pane_id == PaneId(0) {
+                let mut t = tab.terminal.lock(); t.resize(ps);
+                let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+            } else if let Some(pane) = tab.additional_panes.get_mut(pane_id) {
+                let mut t = pane.terminal.lock(); t.resize(ps);
+                let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+            }
+        }
+        let new_pane_rect = pane_rects.iter().find(|(id, _)| *id == new_pane_id).map(|(_, r)| r);
+        let pane_size = if let Some(rect) = new_pane_rect {
+            crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false)
+        } else { full_size_info };
+        if let Ok(pane_state) = Self::create_pane(&config, window_id, pane_size, &event_loop_proxy, tab_id, new_pane_id) {
+            tab.additional_panes.insert(new_pane_id, pane_state);
+        }
+        tab.active_pane = new_pane_id;
+        self.display.damage_tracker.frame().mark_fully_damaged();
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId) -> Result<PaneState, Box<dyn Error>> {
+        let pty_config = config.pty_config();
+        let event_proxy = EventProxy::new(proxy.clone(), window_id, tab_id, Some(pane_id));
+        let terminal = Term::new(config.term_options(), &size_info, event_proxy.clone());
+        let terminal = Arc::new(FairMutex::new(terminal));
+        let pty = tty::new(&pty_config, size_info.into(), window_id.into())?;
+        #[cfg(not(windows))] let master_fd = pty.file().as_raw_fd();
+        #[cfg(not(windows))] let shell_pid = pty.child().id();
+        let event_loop = PtyEventLoop::new(Arc::clone(&terminal), event_proxy.clone(), pty, pty_config.drain_on_exit, config.debug.ref_test)?;
+        let loop_tx = event_loop.channel();
+        let _io_thread = event_loop.spawn();
+        if config.cursor.style().blinking { event_proxy.send_event(TerminalEvent::CursorBlinkingChange.into()); }
+        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), master_fd, shell_pid))
+    }
+
+    fn close_pane(&mut self) {
+        let leaves_before = self.active_tab().pane_tree.leaf_ids().len();
+        if leaves_before <= 1 { return; }
+        let pane_to_close = self.active_tab().active_pane;
+        let result = self.active_tab_mut().pane_tree.remove(pane_to_close);
+        if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
+            self.active_tab_mut().pane_tree = replacement;
+        }
+        self.active_tab_mut().additional_panes.remove(&pane_to_close);
+        if let Some(&first) = self.active_tab().pane_tree.leaf_ids().first() {
+            self.active_tab_mut().active_pane = first;
+        }
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn focus_pane(&mut self, direction: FocusDir) {
+        use crate::pane_tree::Rect;
+        let tab = self.active_tab(); let leaves = tab.pane_tree.leaf_ids();
+        if leaves.len() <= 1 { return; }
+        let active = tab.active_pane;
+        let viewport = Rect::new(0.0, 0.0, self.display.size_info.width() as f32, self.display.size_info.height() as f32);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects(viewport);
+        let active_rect = pane_rects.iter().find(|(id, _)| *id == active).map(|(_, r)| r.clone());
+        let Some(active_rect) = active_rect else { return };
+        let active_cx = active_rect.x + active_rect.width * 0.5; let active_cy = active_rect.y + active_rect.height * 0.5;
+        let candidates: Vec<_> = pane_rects.iter().filter(|(id, _)| *id != active).collect();
+        let mut best: Option<(PaneId, f32)> = None;
+        for (id, r) in &candidates {
+            let cx = r.x + r.width * 0.5; let cy = r.y + r.height * 0.5;
+            let (in_dir, primary_dist) = match direction {
+                FocusDir::Left if cx < active_cx => (true, active_cx - cx),
+                FocusDir::Right if cx > active_cx => (true, cx - active_cx),
+                FocusDir::Up if cy < active_cy => (true, active_cy - cy),
+                FocusDir::Down if cy > active_cy => (true, cy - active_cy),
+                _ => (false, 0.0),
+            };
+            if !in_dir { continue; }
+            let overlaps = match direction {
+                FocusDir::Left | FocusDir::Right => r.y < active_rect.y + active_rect.height && r.y + r.height > active_rect.y,
+                FocusDir::Up | FocusDir::Down => r.x < active_rect.x + active_rect.width && r.x + r.width > active_rect.x,
+            };
+            let score = if overlaps { primary_dist } else { 1000.0 + primary_dist };
+            match best { None => best = Some((*id, score)), Some((_, bs)) if score < bs => best = Some((*id, score)), _ => {} }
+        }
+        let new_active = if let Some((id, _)) = best { id } else { leaves[(leaves.iter().position(|&i| i == active).unwrap_or(0) + 1) % leaves.len()] };
+        self.active_tab_mut().active_pane = new_active;
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    fn toggle_zoom(&mut self) {
+        use crate::pane_tree::Rect;
+        let size_info = self.display.size_info;
+        let viewport_w = size_info.width() as f32; let viewport_h = size_info.height() as f32;
+        let cell_w = size_info.cell_width(); let cell_h = size_info.cell_height();
+        let padding_x = size_info.padding_x(); let padding_y = size_info.padding_y();
+        let tab = self.active_tab_mut();
+        let was_zoomed = tab.zoomed_pane.is_some();
+        tab.zoomed_pane = if was_zoomed { None } else { Some(tab.active_pane) };
+        if tab.zoomed_pane.is_some() {
+            let zoomed = tab.zoomed_pane.unwrap();
+            if zoomed == PaneId(0) { let mut t = tab.terminal.lock(); t.resize(size_info);
+                let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into())); }
+            else if let Some(pane) = tab.additional_panes.get_mut(&zoomed) { let mut t = pane.terminal.lock(); t.resize(size_info);
+                let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into())); }
+        } else {
+            let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
+            let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+            for (pid, rect) in &pane_rects {
+                let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
+                if *pid == PaneId(0) { let mut t = tab.terminal.lock(); t.resize(ps);
+                    let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into())); }
+                else if let Some(pane) = tab.additional_panes.get_mut(pid) { let mut t = pane.terminal.lock(); t.resize(ps);
+                    let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into())); }
+            }
+        }
+        self.display.damage_tracker.frame().mark_fully_damaged();
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.dirty = true;
+    }
+
+    fn resize_pane(&mut self, dir: SplitDir, grow: bool) {
+        use crate::pane_tree::Rect;
+        let size_info = self.display.size_info;
+        let viewport_w = size_info.width() as f32; let viewport_h = size_info.height() as f32;
+        let cell_w = size_info.cell_width(); let cell_h = size_info.cell_height();
+        let padding_x = size_info.padding_x(); let padding_y = size_info.padding_y();
+        let tab = self.active_tab_mut();
+        let pane_id = tab.active_pane;
+        let delta = 0.05;
+        if !tab.pane_tree.adjust_ratio(pane_id, dir, grow, delta) { return; }
+        let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+        for (pid, rect) in &pane_rects {
+            let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
+            if *pid == PaneId(0) { let mut t = tab.terminal.lock(); t.resize(ps);
+                let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into())); }
+            else if let Some(pane) = tab.additional_panes.get_mut(pid) { let mut t = pane.terminal.lock(); t.resize(ps);
+                let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into())); }
+        }
+        self.display.damage_tracker.frame().mark_fully_damaged();
+        self.display.damage_tracker.next_frame().mark_fully_damaged();
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
+    }
+
+    pub fn handle_pane_exit(&mut self, tab_id: Option<TabId>, pane_id: Option<PaneId>) -> bool {
+        let Some(tab_idx) = self.tab_index(tab_id) else { return false; };
+        let leaves = self.tabs[tab_idx].pane_tree.leaf_ids().len();
+        if let Some(pid) = pane_id {
+            if pid != PaneId(0) || leaves > 1 {
+                self.tabs[tab_idx].active_pane = pid;
+                let leaves_before = self.tabs[tab_idx].pane_tree.leaf_ids().len();
+                if leaves_before > 1 {
+                    let result = self.tabs[tab_idx].pane_tree.remove(pid);
+                    if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
+                        self.tabs[tab_idx].pane_tree = replacement;
+                    }
+                    self.tabs[tab_idx].additional_panes.remove(&pid);
+                    if let Some(&first) = self.tabs[tab_idx].pane_tree.leaf_ids().first() {
+                        self.tabs[tab_idx].active_pane = first;
+                    }
+                    self.display.damage_tracker.next_frame().mark_fully_damaged();
+                    self.display.pending_update.dirty = true;
+                    self.dirty = true;
+                    return false;
+                }
+            }
+        }
+        self.handle_tab_exit(tab_id)
+    }
+
+}
 impl Drop for WindowContext {
     fn drop(&mut self) {
         for tab in &mut self.tabs {

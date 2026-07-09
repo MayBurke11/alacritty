@@ -303,7 +303,7 @@ impl ApplicationHandler<Event> for Processor {
             info!(target: LOG_TARGET_WINIT, "{event:?}");
         }
 
-        let Event { window_id, tab_id, pane_id: _pane_id, payload } = event;
+        let Event { window_id, tab_id, pane_id, payload } = event;
 
         // Handle events which don't mandate the WindowId.
         match (payload, window_id) {
@@ -493,7 +493,7 @@ impl ApplicationHandler<Event> for Processor {
             },
             (EventType::Terminal(TerminalEvent::Exit), Some(window_id)) => {
                 let close_window = match self.windows.get_mut(&window_id) {
-                    Some(window_context) => window_context.handle_tab_exit(tab_id),
+                    Some(window_context) => window_context.handle_pane_exit(tab_id, pane_id),
                     None => false,
                 };
 
