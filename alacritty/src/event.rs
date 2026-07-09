@@ -815,6 +815,7 @@ impl MenuState {
                     if item_idx < items.len() {
                         let filename = items[item_idx].clone();
                         self.list_mode = None;
+                        self.path.clear();
                         self.focus = 0;
                         self.active = false;
                         return Some(MenuSelection::List { list_type: "sessions".into(), value: filename });
