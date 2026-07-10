@@ -638,12 +638,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", test)))]
 pub fn platform_key_bindings() -> Vec<KeyBinding> {
-    let mut bindings = common_keybindings();
-    bindings.extend(bindings!(
-        KeyBinding;
-        "f", ModifiersState::ALT; Action::ToggleZoom;
-    ));
-    bindings
+    common_keybindings()
 }
 
 #[cfg(all(target_os = "windows", not(test)))]
