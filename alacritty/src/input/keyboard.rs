@@ -133,50 +133,38 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             }
         }
 
-        // Menu modal key interception: Ctrl+G always toggles locked/unlocked.
-        if mods.control_key()
-            && matches!(key.logical_key.as_ref(), Key::Character("g"))
-            && !mods.alt_key()
-            && !mods.super_key()
-        {
-            self.ctx.toggle_locked();
-            return;
-        }
-
-        // Menu modal navigation: ALT+arrows, Enter, Escape when menu is active.
+        // Menu modal navigation: Escape, Enter, Alt+arrows, letter keys when menu is active.
+        // Must be before process_key_bindings to intercept keys while menu is open.
         if self.ctx.is_menu_active() {
             match key.logical_key.as_ref() {
-                Key::Named(NamedKey::Escape) => {
-                    self.ctx.menu_back();
-                    return;
-                },
-                Key::Named(NamedKey::Enter) => {
-                    self.ctx.menu_select();
-                    return;
-                },
-                Key::Named(NamedKey::ArrowLeft) if mods.alt_key() => {
-                    self.ctx.menu_focus_left();
-                    return;
-                },
-                Key::Named(NamedKey::ArrowRight) if mods.alt_key() => {
-                    self.ctx.menu_focus_right();
-                    return;
-                },
+                Key::Named(NamedKey::Escape) => { self.ctx.menu_back(); return; },
+                Key::Named(NamedKey::Enter) => { self.ctx.menu_select(); return; },
+                Key::Named(NamedKey::ArrowLeft) if mods.alt_key() => { self.ctx.menu_focus_left(); return; },
+                Key::Named(NamedKey::ArrowRight) if mods.alt_key() => { self.ctx.menu_focus_right(); return; },
                 _ => {
-                    // Letter keys trigger quick-select by first character.
+                    // Ctrl+G always toggles locked, even in menu mode.
+                    if mods.control_key()
+                        && matches!(key.logical_key.as_ref(), Key::Character("g"))
+                        && !mods.alt_key() && !mods.super_key()
+                    {
+                        self.ctx.toggle_locked();
+                        return;
+                    }
+                    // Letter keys trigger quick-select.
                     if let Key::Character(ch) = key.logical_key.as_ref() {
                         if let Some(c) = ch.chars().next() {
                             self.ctx.menu_letter_key(c);
                             return;
                         }
                     }
-                    // All other keys are suppressed in menu active mode.
+                    // All other keys suppressed in menu mode.
                     return;
                 },
             }
         }
 
         // Key bindings suppress the character input.
+        // Ctrl+G → ToggleLocked works through this (configurable binding).
         if self.process_key_bindings(&key) {
             return;
         }

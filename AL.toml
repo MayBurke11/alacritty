@@ -1,0 +1,107 @@
+# Alacritty Configuration
+# Version: v0.18.0-dev with Sixel + Kitty graphics + Tabs + Modal Menu
+# Branch: tab-dev
+
+[general]
+import = ["~/.config/alacritty/themes/focus_nova.toml"]
+live_config_reload = true
+ipc_socket = true
+
+[env]
+TERM = "alacritty"
+COLORTERM = "truecolor"
+EDITOR = "hx"
+
+[window]
+opacity = 0.95
+blur = true
+dynamic_title = true
+dynamic_padding = true
+resize_increments = true
+startup_mode = "Windowed"
+decorations = "None"
+decorations_theme_variant = "Dark"
+option_as_alt = "None"
+
+[font]
+size = 11
+
+[terminal]
+shell = { program = "/usr/bin/zsh", args = ["-l"] }
+
+[tabs]
+tab_bar_edge = "bottom"
+tab_bar_style = "Slant"
+active_tab_font_style = "Bold"
+inactive_tab_font_style = "Italic"
+
+[tabs.mouse]
+enabled = true
+hover = true
+
+[menu]
+menu_bar_edge = "bottom"
+
+[[menu.items]]
+label = "PAN"
+
+[[menu.items.submenu]]
+label = "SPLIT"
+
+[[menu.items.submenu.submenu]]
+label = "RIGHT"
+action = "split-right"
+
+[[menu.items.submenu.submenu]]
+label = "DOWN"
+action = "split-down"
+
+[[menu.items.submenu]]
+label = "RESIZE"
+action = "resize-mode"
+
+[[menu.items.submenu]]
+label = "KILL"
+action = "close-pane"
+
+[[menu.items.submenu]]
+label = "FULL"
+action = "toggle-zoom"
+
+[[menu.items]]
+label = "TAB"
+
+[[menu.items.submenu]]
+label = "RENAME"
+action = "rename-tab"
+
+[[menu.items.submenu]]
+label = "CREATE"
+action = "create-tab"
+
+[[menu.items.submenu]]
+label = "KILL"
+action = "close-tab"
+
+[[menu.items.submenu]]
+label = "PIN"
+action = "pin-tab"
+
+[[menu.items.submenu]]
+label = "MOVE ←"
+action = "move-tab-backward"
+
+[[menu.items.submenu]]
+label = "MOVE →"
+action = "move-tab-forward"
+
+[[menu.items]]
+label = "SESS"
+
+[[menu.items.submenu]]
+label = "SAVE"
+action = "save-session"
+
+[[menu.items.submenu]]
+label = "LOAD"
+list = "sessions"
