@@ -195,14 +195,8 @@ impl PaneNode {
                 match result_a {
                     SearchResult::Found => {
                         if *direction == dir {
-                            let old_ratio = *ratio;
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
-                            // Preserve far-side pixel sizes.
-                            // A side: A's right child (closer to divider) absorbs change.
-                            // B side: B's left child (closer to divider) absorbs change.
-                            a.preserve_far_side(old_ratio, *ratio, false);
-                            b.preserve_far_side(1.0 - old_ratio, 1.0 - *ratio, true);
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -215,11 +209,10 @@ impl PaneNode {
                 match result_b {
                     SearchResult::Found => {
                         if *direction == dir {
-                            let old_ratio = *ratio;
+                            // Arrow direction = divider movement direction.
+                            // grow=true moves divider right/down (ratio increases).
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
-                            a.preserve_far_side(old_ratio, *ratio, false);
-                            b.preserve_far_side(1.0 - old_ratio, 1.0 - *ratio, true);
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -263,30 +256,6 @@ impl PaneNode {
                 .or_else(|| b.find_split_index_impl(target, index))
         } else {
             None
-        }
-    }
-
-    /// After a parent ratio change, preserve far-side pixel widths.
-    /// `side_is_a`: true for A (left/top) subtree receiving `new_frac`.
-    /// Far side = the side farther from the adjusted divider.
-    fn preserve_far_side(&mut self, old_frac: f32, new_frac: f32, side_is_a: bool) {
-        if new_frac <= 0.0 || old_frac <= 0.0 { return; }
-        match self {
-            PaneNode::Split { ratio, a, b, .. } => {
-                let new_r = if side_is_a {
-                    // B subtree (right/bottom): far = right side.
-                    // Keep right child at pixel width, left absorbs.
-                    let old_far = 1.0 - *ratio;
-                    (old_far * old_frac / new_frac).clamp(0.1, 0.9)
-                } else {
-                    // A subtree (left/top): far = left side.
-                    // Keep left child at pixel width, right absorbs.
-                    let old_far = *ratio;
-                    (old_far * old_frac / new_frac).clamp(0.1, 0.9)
-                };
-                *ratio = if side_is_a { 1.0 - new_r } else { new_r };
-            },
-            PaneNode::Leaf { .. } => {},
         }
     }
 
