@@ -248,12 +248,12 @@ impl PaneNode {
 
     fn find_split_index_impl(&self, target: usize, index: &mut usize) -> Option<SplitId> {
         if let PaneNode::Split { split_id, a, b, .. } = self {
-            a.find_split_index_impl(target, index);
             if *index == target {
                 return Some(*split_id);
             }
             *index += 1;
-            b.find_split_index_impl(target, index)
+            a.find_split_index_impl(target, index)
+                .or_else(|| b.find_split_index_impl(target, index))
         } else {
             None
         }
