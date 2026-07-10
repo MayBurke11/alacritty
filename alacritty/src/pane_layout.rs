@@ -90,30 +90,41 @@ impl PaneLayout {
             SplitDir::Horizontal => {
                 let ex = r.x + r.w; let eps = 0.001;
                 let mut left: Vec<usize> = vec![]; let mut right: Vec<usize> = vec![];
+                let is_right_edge = (ex - 1.0).abs() < eps;
+                let is_left_edge = r.x.abs() < eps;
                 for (i, p) in self.panes.iter().enumerate() {
-                    if (p.x + p.w - ex).abs() < eps && p.y < r.y + r.h && p.y + p.h > r.y { left.push(i); }
-                    if (p.x - ex).abs() < eps && p.y < r.y + r.h && p.y + p.h > r.y { right.push(i); }
+                    if i == tidx { continue; } // exclude self
+                    if (p.x + p.w - ex).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { left.push(i); }
+                    if (p.x - ex).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { right.push(i); }
                 }
-                if left.is_empty() && right.is_empty() { return false; }
+                if left.is_empty() && right.is_empty() && !is_right_edge && !is_left_edge { return false; }
+                // Always adjust both sides of the border.
+                if left.is_empty() { left.push(tidx); }
                 for &li in &left { self.panes[li].w = (self.panes[li].w + delta).max(0.05); }
+                if right.is_empty() { right.push(tidx); }
                 for &ri in &right { self.panes[ri].x = (self.panes[ri].x + delta).max(0.0); self.panes[ri].w = (self.panes[ri].w - delta).max(0.05); }
             },
             SplitDir::Vertical => {
                 let ey = r.y + r.h; let eps = 0.001;
                 let mut top: Vec<usize> = vec![]; let mut bot: Vec<usize> = vec![];
+                let is_bottom_edge = (ey - 1.0).abs() < eps;
+                let is_top_edge = r.y.abs() < eps;
                 for (i, p) in self.panes.iter().enumerate() {
-                    if (p.y + p.h - ey).abs() < eps && p.x < r.x + r.w && p.x + p.w > r.x { top.push(i); }
-                    if (p.y - ey).abs() < eps && p.x < r.x + r.w && p.x + p.w > r.x { bot.push(i); }
+                    if i == tidx { continue; }
+                    if (p.y + p.h - ey).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { top.push(i); }
+                    if (p.y - ey).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { bot.push(i); }
                 }
-                if top.is_empty() && bot.is_empty() { return false; }
+                if top.is_empty() && bot.is_empty() && !is_bottom_edge && !is_top_edge { return false; }
+                if top.is_empty() { top.push(tidx); }
                 for &ti in &top { self.panes[ti].h = (self.panes[ti].h + delta).max(0.05); }
+                if bot.is_empty() { bot.push(tidx); }
                 for &bi in &bot { self.panes[bi].y = (self.panes[bi].y + delta).max(0.0); self.panes[bi].h = (self.panes[bi].h - delta).max(0.05); }
             },
         }
         true
     }
 
-    pub fn focus(&mut self, target: PaneId, dir: FocusDir) -> Option<PaneId> {
+    pub fn focus(&self, target: PaneId, dir: FocusDir) -> Option<PaneId> {
         let Some(tidx) = self.panes.iter().position(|p| p.id == target) else { return None; };
         let r = &self.panes[tidx];
         let cx = r.x + r.w * 0.5; let cy = r.y + r.h * 0.5;

@@ -2131,40 +2131,14 @@ impl WindowContext {
     }
 
     fn focus_pane(&mut self, direction: FocusDir) {
-        log::info!("[panes] focus {:?}", direction);
-        use crate::pane_tree::Rect;
-        let tab = self.active_tab(); let leaves = tab.pane_tree.leaf_ids();
-        if leaves.len() <= 1 { return; }
-        let active = tab.active_pane;
-        let viewport = Rect::new(0.0, 0.0, self.display.size_info.width() as f32, self.display.size_info.height() as f32);
-        let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(viewport);
-        let active_rect = pane_rects.iter().find(|(id, _)| *id == active).map(|(_, r)| r.clone());
-        let Some(active_rect) = active_rect else { return };
-        let active_cx = active_rect.x + active_rect.width * 0.5; let active_cy = active_rect.y + active_rect.height * 0.5;
-        let candidates: Vec<_> = pane_rects.iter().filter(|(id, _)| *id != active).collect();
-        let mut best: Option<(PaneId, f32)> = None;
-        for (id, r) in &candidates {
-            let cx = r.x + r.width * 0.5; let cy = r.y + r.height * 0.5;
-            let (in_dir, primary_dist) = match direction {
-                FocusDir::Left if cx < active_cx => (true, active_cx - cx),
-                FocusDir::Right if cx > active_cx => (true, cx - active_cx),
-                FocusDir::Up if cy < active_cy => (true, active_cy - cy),
-                FocusDir::Down if cy > active_cy => (true, cy - active_cy),
-                _ => (false, 0.0),
-            };
-            if !in_dir { continue; }
-            let overlaps = match direction {
-                FocusDir::Left | FocusDir::Right => r.y < active_rect.y + active_rect.height && r.y + r.height > active_rect.y,
-                FocusDir::Up | FocusDir::Down => r.x < active_rect.x + active_rect.width && r.x + r.width > active_rect.x,
-            };
-            let score = if overlaps { primary_dist } else { 1000.0 + primary_dist };
-            match best { None => best = Some((*id, score)), Some((_, bs)) if score < bs => best = Some((*id, score)), _ => {} }
+        let tab = self.active_tab();
+        if tab.pane_tree.leaf_ids().len() <= 1 { return; }
+        if let Some(new_id) = tab.pane_tree.focus(tab.active_pane, direction) {
+            self.active_tab_mut().active_pane = new_id;
+            self.display.damage_tracker.next_frame().mark_fully_damaged();
+            self.display.pending_update.dirty = true;
+            self.dirty = true;
         }
-        let new_active = if let Some((id, _)) = best { id } else { leaves[(leaves.iter().position(|&i| i == active).unwrap_or(0) + 1) % leaves.len()] };
-        self.active_tab_mut().active_pane = new_active;
-        self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
     }
 
     fn toggle_zoom(&mut self) {
