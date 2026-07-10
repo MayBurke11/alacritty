@@ -195,8 +195,14 @@ impl PaneNode {
                 match result_a {
                     SearchResult::Found => {
                         if *direction == dir {
+                            log::info!("[adjust_ratio] A: pane={pane_id:?} dir={dir:?} grow={grow} old={ratio:.3} new={:.3}",
+                                (*ratio + if grow { delta } else { -delta }).clamp(0.1, 0.9));
+                            let old_ratio = *ratio;
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
+                            // Rebalance children to keep divider pixel positions.
+                            a.rebalance_children(old_ratio, *ratio);
+                            b.rebalance_children(1.0 - old_ratio, 1.0 - *ratio);
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -209,10 +215,14 @@ impl PaneNode {
                 match result_b {
                     SearchResult::Found => {
                         if *direction == dir {
-                            // Arrow direction = divider movement direction.
-                            // grow=true moves divider right/down (ratio increases).
+                            log::info!("[adjust_ratio] B: pane={pane_id:?} dir={dir:?} grow={grow} old={ratio:.3} new={:.3}",
+                                (*ratio + if grow { delta } else { -delta }).clamp(0.1, 0.9));
+                            let old_ratio = *ratio;
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
+                            // Rebalance children to keep divider pixel positions.
+                            a.rebalance_children(old_ratio, *ratio);
+                            b.rebalance_children(1.0 - old_ratio, 1.0 - *ratio);
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -256,6 +266,24 @@ impl PaneNode {
                 .or_else(|| b.find_split_index_impl(target, index))
         } else {
             None
+        }
+    }
+
+    /// Recalculate descendant split ratios after a parent ratio change.
+    /// `old_frac` = fraction of parent space this subtree had before.
+    /// `new_frac` = fraction of parent space this subtree has now.
+    pub fn rebalance_children(&mut self, old_frac: f32, new_frac: f32) {
+        if new_frac == 0.0 || old_frac == 0.0 { return; }
+        let scale = old_frac / new_frac;
+        if (scale - 1.0).abs() < 0.001 { return; }
+        match self {
+            PaneNode::Split { ratio, a, b, .. } => {
+                *ratio = (*ratio * scale).clamp(0.1, 0.9);
+                // Recurse: children's relative space hasn't changed (same scale).
+                a.rebalance_children(1.0, 1.0);
+                b.rebalance_children(1.0, 1.0);
+            },
+            PaneNode::Leaf { .. } => {},
         }
     }
 
