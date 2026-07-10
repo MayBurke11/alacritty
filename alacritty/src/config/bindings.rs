@@ -623,7 +623,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
         "w",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::CloseTab;
         ".",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabForward;
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
-        "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
+        // Rename tab via modal menu (Ctrl+G, t, r) — Ctrl+Shift+Alt+T removed from defaults.
         // Pane focus via Alt+arrows. Disabled by default — add to personal config if needed.
         // ArrowRight, ModifiersState::ALT; Action::FocusRight;
         // ArrowLeft,  ModifiersState::ALT; Action::FocusLeft;
