@@ -2030,6 +2030,7 @@ impl WindowContext {
 
     fn split_pane(&mut self, direction: SplitDir) {
         log::info!("[panes] split {:?}", direction);
+        self.display.cursor_hidden = false; // Show cursor in new pane
         use crate::pane_tree::Rect;
         let new_pane_id = PaneId(self.active_tab().next_pane_id);
         let full_size_info = self.display.size_info;
@@ -2136,6 +2137,7 @@ impl WindowContext {
 
     fn focus_pane(&mut self, direction: FocusDir) {
         log::info!("[panes] focus {:?}", direction);
+        self.display.cursor_hidden = false;
         use crate::pane_tree::Rect;
         let tab = self.active_tab(); let leaves = tab.pane_tree.leaf_ids();
         if leaves.len() <= 1 { return; }
