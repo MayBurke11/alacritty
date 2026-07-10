@@ -184,19 +184,19 @@ impl PaneNode {
     ) -> SearchResult {
         match self {
             PaneNode::Leaf { pane_id: id, .. } => {
-                if *id == pane_id {
-                    SearchResult::Found
-                } else {
-                    SearchResult::NotFound
-                }
+                if *id == pane_id { SearchResult::Found } else { SearchResult::NotFound }
             },
             PaneNode::Split { direction, ratio, a, b, .. } => {
                 let result_a = a.adjust_ratio_impl(pane_id, dir, grow, delta);
                 match result_a {
                     SearchResult::Found => {
                         if *direction == dir {
+                            let old_r = *ratio;
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
+                            // Focus in A: A's right side (near divider) absorbs. B keeps far side.
+                            a.fixup_subtree(dir, old_r, *ratio, true);  // A: keep left (far from divider)
+                            b.fixup_subtree(dir, 1.0 - old_r, 1.0 - *ratio, false); // B: keep right (far from divider)
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -209,10 +209,12 @@ impl PaneNode {
                 match result_b {
                     SearchResult::Found => {
                         if *direction == dir {
-                            // Arrow direction = divider movement direction.
-                            // grow=true moves divider right/down (ratio increases).
+                            let old_r = *ratio;
                             let sign = if grow { 1.0 } else { -1.0 };
                             *ratio = (*ratio + sign * delta).clamp(0.1, 0.9);
+                            // Focus in B: B's left side (near divider) absorbs. A keeps far side.
+                            a.fixup_subtree(dir, old_r, *ratio, true);  // A: keep left (far from divider)
+                            b.fixup_subtree(dir, 1.0 - old_r, 1.0 - *ratio, false); // B: keep right (far from divider)
                             return SearchResult::Adjusted;
                         }
                         return SearchResult::Found;
@@ -223,6 +225,35 @@ impl PaneNode {
 
                 SearchResult::NotFound
             },
+        }
+    }
+
+    /// After a parent ratio change, keep far-side children at their pixel width.
+    /// Only adjusts splits whose direction matches `resize_dir`.
+    fn fixup_subtree(&mut self, resize_dir: SplitDir, old_parent_frac: f32, new_parent_frac: f32, keep_left: bool) {
+        if new_parent_frac <= 0.0 || old_parent_frac <= 0.0 { return; }
+        match self {
+            PaneNode::Split { direction, ratio, a, b, .. } => {
+                if *direction == resize_dir {
+                    let new_r = if keep_left {
+                        let old_left = *ratio * old_parent_frac;
+                        (old_left / new_parent_frac).clamp(0.1, 0.9)
+                    } else {
+                        let old_right = (1.0 - *ratio) * old_parent_frac;
+                        let new_right = (old_right / new_parent_frac).clamp(0.1, 0.9);
+                        1.0 - new_right
+                    };
+                    *ratio = new_r;
+                }
+                // Recurse into children.
+                let child_old = if *direction == resize_dir { *ratio * old_parent_frac } else { old_parent_frac };
+                let child_new = if *direction == resize_dir { *ratio * new_parent_frac } else { new_parent_frac };
+                a.fixup_subtree(resize_dir, child_old, child_new, keep_left);
+                let child_old_b = if *direction == resize_dir { (1.0 - *ratio) * old_parent_frac } else { old_parent_frac };
+                let child_new_b = if *direction == resize_dir { (1.0 - *ratio) * new_parent_frac } else { new_parent_frac };
+                b.fixup_subtree(resize_dir, child_old_b, child_new_b, keep_left);
+            },
+            PaneNode::Leaf { .. } => {},
         }
     }
 
@@ -473,6 +504,95 @@ mod tests {
         let (panes, dividers) = root.leaf_rects(viewport);
         assert_eq!(panes.len(), 3);
         assert_eq!(dividers.len(), 2);
+    }
+
+    // --- fixup_subtree tests ---
+
+    fn leaf_rect_width(pane_id: u64, root: &PaneNode, vp: &Rect) -> f32 {
+        root.leaf_rects(vp.clone()).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.width
+    }
+
+    fn leaf_rect_height(pane_id: u64, root: &PaneNode, vp: &Rect) -> f32 {
+        root.leaf_rects(vp.clone()).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.height
+    }
+
+    #[test]
+    fn fixup_two_pane_horizontal_resize() {
+        // [1 | 2] → resize 1 right → [1(wider) | 2(narrower)]
+        let mut root = leaf(1);
+        root.split(PaneId(1), PaneId(2), SplitId(1), SplitDir::Horizontal);
+        let vp = Rect::new(0., 0., 100., 100.);
+        let w1 = leaf_rect_width(1, &root, &vp);
+        let w2 = leaf_rect_width(2, &root, &vp);
+        assert!((w1 - 49.0).abs() < 3.0, "w1={}", w1); // 100 - 1px divider = 99, split at 0.5: 49/50
+        assert!((w2 - 50.0).abs() < 3.0, "w2={}", w2);
+
+        root.adjust_ratio(PaneId(1), SplitDir::Horizontal, true, 0.1);
+        let w1 = leaf_rect_width(1, &root, &vp);
+        let w2 = leaf_rect_width(2, &root, &vp);
+        // ratio 0.5 → 0.6. A (left) gets 60%, B gets 40%.
+        // 99 * 0.6 ≈ 59, 99 * 0.4 ≈ 39 (with 1px divider)
+        assert!(w1 > 55.0 && w1 < 62.0, "w1={}", w1);
+        assert!(w2 > 37.0 && w2 < 44.0, "w2={}", w2);
+    }
+
+    #[test]
+    fn fixup_nested_split_preserves_far_side() {
+        // Split(H) { Split(V){1,4}, Split(V){2,3} } — 2x2 grid
+        // Focus on pane 3 (bottom-right), resize right → far-side HEIGHTS preserved
+        let mut root = leaf(1);
+        root.split(PaneId(1), PaneId(2), SplitId(1), SplitDir::Horizontal); // [1|2]
+        root.split(PaneId(2), PaneId(3), SplitId(2), SplitDir::Vertical);   // [1|2/3]
+        root.split(PaneId(1), PaneId(4), SplitId(3), SplitDir::Vertical);   // [1/4|2/3]
+        let vp = Rect::new(0., 0., 200., 200.);
+
+        let h1_before = leaf_rect_height(1, &root, &vp);
+        let h2_before = leaf_rect_height(2, &root, &vp);
+        let h3_before = leaf_rect_height(3, &root, &vp);
+        let h4_before = leaf_rect_height(4, &root, &vp);
+
+        // Resize pane 3 right (Horizontal). Heights should NOT change.
+        root.adjust_ratio(PaneId(3), SplitDir::Horizontal, true, 0.1);
+
+        let h1_after = leaf_rect_height(1, &root, &vp);
+        let h2_after = leaf_rect_height(2, &root, &vp);
+        let h3_after = leaf_rect_height(3, &root, &vp);
+        let h4_after = leaf_rect_height(4, &root, &vp);
+
+        // All heights should stay the same — only widths changed
+        assert!((h1_after - h1_before).abs() < 3.0,
+            "pane 1 height should not change: {} → {}", h1_before, h1_after);
+        assert!((h2_after - h2_before).abs() < 3.0,
+            "pane 2 height should not change: {} → {}", h2_before, h2_after);
+        assert!((h3_after - h3_before).abs() < 3.0,
+            "pane 3 height should not change: {} → {}", h3_before, h3_after);
+        assert!((h4_after - h4_before).abs() < 3.0,
+            "pane 4 height should not change: {} → {}", h4_before, h4_after);
+    }
+
+    #[test]
+    fn fixup_vertical_nested_preserves_far_side() {
+        // Split(V) { Split(H){1,4}, Split(H){2,3} } — 2x2 grid (vertical root)
+        // Focus on pane 2 (top-right), resize down → far-side WIDTHS preserved
+        let mut root = leaf(1);
+        root.split(PaneId(1), PaneId(2), SplitId(1), SplitDir::Vertical);
+        root.split(PaneId(2), PaneId(3), SplitId(2), SplitDir::Horizontal);
+        root.split(PaneId(1), PaneId(4), SplitId(3), SplitDir::Horizontal);
+        let vp = Rect::new(0., 0., 200., 200.);
+
+        let w1_before = leaf_rect_width(1, &root, &vp);
+        let w2_before = leaf_rect_width(2, &root, &vp);
+
+        root.adjust_ratio(PaneId(2), SplitDir::Vertical, true, 0.1);
+
+        let w1_after = leaf_rect_width(1, &root, &vp);
+        let w2_after = leaf_rect_width(2, &root, &vp);
+
+        // Widths should NOT change — vertical resize affects heights only
+        assert!((w1_after - w1_before).abs() < 3.0,
+            "pane 1 width should not change: {} → {}", w1_before, w1_after);
+        assert!((w2_after - w2_before).abs() < 3.0,
+            "pane 2 width should not change: {} → {}", w2_before, w2_after);
     }
 
     #[test]
