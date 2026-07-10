@@ -86,35 +86,60 @@ impl PaneLayout {
     pub fn resize(&mut self, target: PaneId, dir: SplitDir, delta: f32) -> bool {
         let Some(tidx) = self.panes.iter().position(|p| p.id == target) else { return false; };
         let r = self.panes[tidx].clone();
+        let eps = 0.001;
         match dir {
             SplitDir::Horizontal => {
-                let ex = r.x + r.w; let eps = 0.001;
+                // Try right edge first. If no neighbors (viewport boundary), use left edge.
+                let (edge_x, use_right) = if (r.x + r.w - 1.0).abs() < eps && delta > 0.0 {
+                    (r.x, false) // at right boundary pushing right: use left edge
+                } else if r.x.abs() < eps && delta < 0.0 {
+                    (r.x + r.w, true) // at left boundary pushing left: use right edge
+                } else {
+                    (r.x + r.w, true) // default: use right edge
+                };
+
                 let mut left: Vec<usize> = vec![]; let mut right: Vec<usize> = vec![];
-                let is_right_edge = (ex - 1.0).abs() < eps;
-                let is_left_edge = r.x.abs() < eps;
                 for (i, p) in self.panes.iter().enumerate() {
-                    if i == tidx { continue; } // exclude self
-                    if (p.x + p.w - ex).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { left.push(i); }
-                    if (p.x - ex).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { right.push(i); }
+                    if (p.x + p.w - edge_x).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { left.push(i); }
+                    if (p.x - edge_x).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { right.push(i); }
                 }
-                if left.is_empty() && right.is_empty() && !is_right_edge && !is_left_edge { return false; }
-                // Always adjust both sides of the border.
+                if left.is_empty() && right.is_empty() {
+                    // Try the other edge
+                    let other_edge = if use_right { r.x } else { r.x + r.w };
+                    for (i, p) in self.panes.iter().enumerate() {
+                        if i == tidx { continue; }
+                        if (p.x + p.w - other_edge).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { left.push(i); }
+                        if (p.x - other_edge).abs() < eps && p.y <= r.y + r.h && p.y + p.h >= r.y { right.push(i); }
+                    }
+                }
+                if left.is_empty() && right.is_empty() { return false; }
                 if left.is_empty() { left.push(tidx); }
                 for &li in &left { self.panes[li].w = (self.panes[li].w + delta).max(0.05); }
                 if right.is_empty() { right.push(tidx); }
                 for &ri in &right { self.panes[ri].x = (self.panes[ri].x + delta).max(0.0); self.panes[ri].w = (self.panes[ri].w - delta).max(0.05); }
             },
             SplitDir::Vertical => {
-                let ey = r.y + r.h; let eps = 0.001;
+                let (edge_y, use_bottom) = if (r.y + r.h - 1.0).abs() < eps && delta > 0.0 {
+                    (r.y, false)
+                } else if r.y.abs() < eps && delta < 0.0 {
+                    (r.y + r.h, true)
+                } else {
+                    (r.y + r.h, true)
+                };
+
                 let mut top: Vec<usize> = vec![]; let mut bot: Vec<usize> = vec![];
-                let is_bottom_edge = (ey - 1.0).abs() < eps;
-                let is_top_edge = r.y.abs() < eps;
                 for (i, p) in self.panes.iter().enumerate() {
-                    if i == tidx { continue; }
-                    if (p.y + p.h - ey).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { top.push(i); }
-                    if (p.y - ey).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { bot.push(i); }
+                    if (p.y + p.h - edge_y).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { top.push(i); }
+                    if (p.y - edge_y).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { bot.push(i); }
                 }
-                if top.is_empty() && bot.is_empty() && !is_bottom_edge && !is_top_edge { return false; }
+                if top.is_empty() && bot.is_empty() {
+                    let other_edge = if use_bottom { r.y } else { r.y + r.h };
+                    for (i, p) in self.panes.iter().enumerate() {
+                        if (p.y + p.h - other_edge).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { top.push(i); }
+                        if (p.y - other_edge).abs() < eps && p.x <= r.x + r.w && p.x + p.w >= r.x { bot.push(i); }
+                    }
+                }
+                if top.is_empty() && bot.is_empty() { return false; }
                 if top.is_empty() { top.push(tidx); }
                 for &ti in &top { self.panes[ti].h = (self.panes[ti].h + delta).max(0.05); }
                 if bot.is_empty() { bot.push(tidx); }
@@ -182,18 +207,28 @@ impl PaneLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn new_has_one_pane() { let l = PaneLayout::new(); assert_eq!(l.panes.len(), 1); }
+
     #[test]
     fn split_horizontal() {
         let mut l = PaneLayout::new(); l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
         assert_eq!(l.panes.len(), 2); assert!((l.panes[0].w - 0.5).abs() < 0.01);
     }
+
+    #[test]
+    fn split_vertical() {
+        let mut l = PaneLayout::new(); l.split(PaneId(0), PaneId(1), SplitDir::Vertical);
+        assert_eq!(l.panes.len(), 2); assert!((l.panes[0].h - 0.5).abs() < 0.01);
+    }
+
     #[test]
     fn close_absorbs_into_neighbor() {
         let mut l = PaneLayout::new(); l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
         assert!(l.close(PaneId(1))); assert_eq!(l.panes.len(), 1);
     }
+
     #[test]
     fn resize_horizontal_edge() {
         let mut l = PaneLayout::new(); l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
@@ -201,6 +236,139 @@ mod tests {
         let p0 = l.panes.iter().find(|p| p.id == PaneId(0)).unwrap();
         assert!((p0.w - 0.6).abs() < 0.02);
     }
+
+    #[test]
+    fn resize_right_grows_left_shrinks_right() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.resize(PaneId(0), SplitDir::Horizontal, 0.1);
+        let p0 = &l.panes[0]; let p1 = &l.panes[1];
+        assert!((p0.w - 0.6).abs() < 0.02, "p0.w={}", p0.w);
+        assert!((p1.w - 0.4).abs() < 0.02, "p1.w={}", p1.w);
+        assert!((p1.x - 0.6).abs() < 0.02, "p1.x={}", p1.x);
+    }
+
+    #[test]
+    fn resize_left_shrinks_left_grows_right() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.resize(PaneId(0), SplitDir::Horizontal, -0.1);
+        let p0 = &l.panes[0]; let p1 = &l.panes[1];
+        assert!((p0.w - 0.4).abs() < 0.02);
+        assert!((p1.w - 0.6).abs() < 0.02);
+    }
+
+    #[test]
+    fn resize_right_from_right_pane() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.resize(PaneId(1), SplitDir::Horizontal, 0.1);
+        let p0 = &l.panes[0]; let p1 = &l.panes[1];
+        assert!((p0.w - 0.6).abs() < 0.02);
+        assert!((p1.w - 0.4).abs() < 0.02);
+    }
+
+    #[test]
+    fn resize_down_grows_top_shrinks_bottom() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Vertical);
+        l.resize(PaneId(0), SplitDir::Vertical, 0.1);
+        let p0 = &l.panes[0]; let p1 = &l.panes[1];
+        assert!((p0.h - 0.6).abs() < 0.02);
+        assert!((p1.h - 0.4).abs() < 0.02);
+    }
+
+    #[test]
+    fn resize_up_from_bottom_pane() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Vertical);
+        l.resize(PaneId(1), SplitDir::Vertical, 0.1);
+        let p0 = &l.panes[0]; let p1 = &l.panes[1];
+        assert!((p0.h - 0.6).abs() < 0.02);
+        assert!((p1.h - 0.4).abs() < 0.02);
+    }
+
+    fn make_2x2() -> PaneLayout {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.split(PaneId(1), PaneId(2), SplitDir::Vertical);
+        l.split(PaneId(0), PaneId(3), SplitDir::Vertical);
+        l.active_pane = PaneId(3);
+        l
+    }
+
+    #[test]
+    fn grid_2x2_resize_right() {
+        let mut l = make_2x2();
+        eprintln!("Before resize:");
+        for p in &l.panes { eprintln!("  id={}: x={:.3} y={:.3} w={:.3} h={:.3}", p.id.0, p.x, p.y, p.w, p.h); }
+        l.resize(PaneId(3), SplitDir::Horizontal, 0.1);
+        eprintln!("After resize:");
+        for p in &l.panes { eprintln!("  id={}: x={:.3} y={:.3} w={:.3} h={:.3}", p.id.0, p.x, p.y, p.w, p.h); }
+        let p0 = l.panes.iter().find(|p| p.id == PaneId(0)).unwrap();
+        let p3 = l.panes.iter().find(|p| p.id == PaneId(3)).unwrap();
+        let p1 = l.panes.iter().find(|p| p.id == PaneId(1)).unwrap();
+        let p2 = l.panes.iter().find(|p| p.id == PaneId(2)).unwrap();
+        assert!((p0.w - 0.6).abs() < 0.02, "p0.w={}", p0.w);
+        assert!((p3.w - 0.6).abs() < 0.02, "p3.w={}", p3.w);
+        assert!((p1.w - 0.4).abs() < 0.02, "p1.w={}", p1.w);
+        assert!((p2.w - 0.4).abs() < 0.02, "p2.w={}", p2.w);
+    }
+
+    #[test]
+    fn grid_2x2_focus_left() {
+        let l = make_2x2();
+        assert_eq!(l.focus(PaneId(3), FocusDir::Left), None);
+        assert_eq!(l.focus(PaneId(1), FocusDir::Left), Some(PaneId(0)));
+    }
+
+    #[test]
+    fn grid_2x2_focus_up() {
+        let l = make_2x2();
+        assert_eq!(l.focus(PaneId(3), FocusDir::Up), Some(PaneId(0)));
+    }
+
+    #[test]
+    fn grid_2x2_focus_down() {
+        let l = make_2x2();
+        let f = l.focus(PaneId(0), FocusDir::Down);
+        assert!(f == Some(PaneId(2)) || f == Some(PaneId(3)), "got {:?}", f);
+    }
+
+    #[test]
+    fn grid_2x2_close_expands_neighbor() {
+        let mut l = make_2x2();
+        assert!(l.close(PaneId(3)));
+        assert_eq!(l.panes.len(), 3);
+        let p0 = l.panes.iter().find(|p| p.id == PaneId(0)).unwrap();
+        assert!((p0.h - 1.0).abs() < 0.02, "pane 0 should absorb: h={}", p0.h);
+    }
+
+    #[test]
+    fn cannot_resize_below_min() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.resize(PaneId(0), SplitDir::Horizontal, 0.5);
+        let p1 = l.panes.iter().find(|p| p.id == PaneId(1)).unwrap();
+        assert!(p1.w >= 0.05, "min width violated: {}", p1.w);
+    }
+
+    #[test]
+    fn layout_correct_after_split_and_resize() {
+        let mut l = PaneLayout::new();
+        l.split(PaneId(0), PaneId(1), SplitDir::Horizontal);
+        l.split(PaneId(1), PaneId(2), SplitDir::Vertical);
+        l.resize(PaneId(0), SplitDir::Horizontal, 0.1);
+        let (rects, _) = l.layout(Rect::new(0., 0., 1000., 800.));
+        let r0 = rects.iter().find(|(id, _)| *id == PaneId(0)).unwrap().1.clone();
+        let r1 = rects.iter().find(|(id, _)| *id == PaneId(1)).unwrap().1.clone();
+        let r2 = rects.iter().find(|(id, _)| *id == PaneId(2)).unwrap().1.clone();
+        assert!((r0.width - 600.0).abs() < 5.0, "r0.w={}", r0.width);
+        assert!((r1.x - 600.0).abs() < 5.0);
+        assert!((r2.x - 600.0).abs() < 5.0);
+        assert!(r1.y < r2.y);
+    }
+
     #[test]
     fn layout_covers_viewport() {
         let mut l = PaneLayout::new();
