@@ -305,8 +305,6 @@ pub struct WindowContext {
     divider_drag: Option<(usize, crate::pane_tree::SplitId, SplitDir, f32, f32, f32)>,
     /// Alt+arrows resize panes instead of focusing.
     pane_resize_mode: bool,
-    /// Pending pane commands to restore on next frame (delay for shell init).
-    pane_restore_queue: Vec<(usize, PaneId, Vec<String>)>,
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
@@ -948,20 +946,9 @@ impl WindowContext {
                     let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
                     if let Ok(pane_state) = Self::create_pane(
                         &config, window_id, size_info, &proxy, tab_id, pane_id,
+                        saved_pane.command.clone(),
                     ) {
-                        let mut ps = pane_state;
-                        ps.command = saved_pane.command.clone();
-                        tab.additional_panes.insert(pane_id, ps);
-                    }
-                }
-
-                // Queue pane commands for delayed restore (shell needs time to init).
-                for saved_pane in &saved.additional_panes {
-                    if let Some(ref cmd) = saved_pane.command {
-                        if !cmd.is_empty() {
-                            let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
-                            self.pane_restore_queue.push((i, pane_id, cmd.clone()));
-                        }
+                        tab.additional_panes.insert(pane_id, pane_state);
                     }
                 }
             }
@@ -1225,7 +1212,6 @@ impl WindowContext {
             divider_drag: None,
             pane_resize_mode: false,
             window_close_confirmation_pending: false,
-            pane_restore_queue: Vec::new(),
             focused: false,
             event_proxy: proxy,
         };
@@ -1834,38 +1820,6 @@ impl WindowContext {
 
         self.sync_focus();
 
-        // Process pane command restore queue (wait 1s for shell init, then inject).
-        if !self.pane_restore_queue.is_empty() {
-            let tab = &self.active_tab();
-            if !tab.message_buffer.is_empty() {
-                // Still showing message, don't inject yet.
-            } else {
-                // First frame: show message, schedule injection.
-                let count = self.pane_restore_queue.len();
-                self.tabs[self.active_tab].message_buffer.push(Message::new(
-                    format!("Restoring {} pane command(s)...", count),
-                    MessageType::Warning,
-                ));
-                // Actually inject immediately — the shell buffers input.
-                for (tab_idx, pane_id, cmd) in std::mem::take(&mut self.pane_restore_queue) {
-                    if tab_idx >= self.tabs.len() { continue; }
-                    let tab = &self.tabs[tab_idx];
-                    if pane_id == PaneId(0) {
-                        let cmd_str = cmd.join(" ") + "\n";
-                        let _ = tab.notifier.0.send(
-                            alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
-                        );
-                    } else if let Some(pane) = tab.additional_panes.get(&pane_id) {
-                        let cmd_str = cmd.join(" ") + "\n";
-                        let _ = pane.notifier.0.send(
-                            alacritty_terminal::event_loop::Msg::Input(cmd_str.into_bytes().into()),
-                        );
-                    }
-                }
-                self.dirty = true;
-            }
-        }
-
         // Process DisplayUpdate events.
         if self.display.pending_update.dirty {
             let tab_bar_lines = self.tab_bar_lines();
@@ -2111,7 +2065,7 @@ impl WindowContext {
         let pane_size = if let Some(rect) = new_pane_rect {
             crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false)
         } else { full_size_info };
-        if let Ok(pane_state) = Self::create_pane(&config, window_id, pane_size, &event_loop_proxy, tab_id, new_pane_id) {
+        if let Ok(pane_state) = Self::create_pane(&config, window_id, pane_size, &event_loop_proxy, tab_id, new_pane_id, None) {
             tab.additional_panes.insert(new_pane_id, pane_state);
         }
         tab.active_pane = new_pane_id;
@@ -2121,8 +2075,16 @@ impl WindowContext {
         self.dirty = true;
     }
 
-    fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId) -> Result<PaneState, Box<dyn Error>> {
-        let pty_config = config.pty_config();
+    fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId, command: Option<Vec<String>>) -> Result<PaneState, Box<dyn Error>> {
+        let mut pty_config = config.pty_config();
+        if let Some(ref cmd) = command {
+            if !cmd.is_empty() {
+                let program = cmd[0].clone();
+                let args: Vec<String> = cmd[1..].to_vec();
+                let prog = crate::config::ui_config::Program::WithArgs { program, args };
+                pty_config.shell = Some(prog.into());
+            }
+        }
         let event_proxy = EventProxy::new(proxy.clone(), window_id, tab_id, Some(pane_id));
         let terminal = Term::new(config.term_options(), &size_info, event_proxy.clone());
         let terminal = Arc::new(FairMutex::new(terminal));
@@ -2133,7 +2095,7 @@ impl WindowContext {
         let loop_tx = event_loop.channel();
         let _io_thread = event_loop.spawn();
         if config.cursor.style().blinking { event_proxy.send_event(TerminalEvent::CursorBlinkingChange.into()); }
-        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), None, master_fd, shell_pid))
+        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), command, master_fd, shell_pid))
     }
 
     fn close_pane(&mut self) {
