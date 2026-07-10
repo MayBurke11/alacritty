@@ -70,6 +70,14 @@ pub struct Options {
     #[clap(long, value_hint = ValueHint::FilePath)]
     pub restore: Option<PathBuf>,
 
+    /// Print a default configuration file to stdout.
+    #[clap(long, conflicts_with_all = ["daemon", "restore", "embed"])]
+    pub create_config: bool,
+
+    /// Print a systemd user unit file to stdout.
+    #[clap(long, conflicts_with_all = ["daemon", "restore", "embed", "create_config"])]
+    pub create_systemd_unit: bool,
+
     /// CLI options for config overrides.
     #[clap(skip)]
     pub config_options: ParsedOptions,

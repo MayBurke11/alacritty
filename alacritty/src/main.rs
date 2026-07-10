@@ -136,6 +136,36 @@ impl Drop for TemporaryFiles {
 /// Creates a window, the terminal state, PTY, I/O event loop, input processor,
 /// config change monitor, and runs the main display loop.
 fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
+    // Print default config to stdout and exit.
+    if options.create_config {
+        let config = toml::to_string_pretty(&config::UiConfig::default())
+            .unwrap_or_else(|_| "# Failed to serialize config\n".into());
+        println!("{config}");
+        return Ok(());
+    }
+
+    // Print systemd user unit to stdout and exit.
+    if options.create_systemd_unit {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "alacritty".into());
+        let exe_path = exe.display();
+        println!(concat!(
+            "[Unit]\n",
+            "Description=Alacritty terminal emulator (IPC daemon)\n",
+            "Documentation=man:alacritty(1)\n",
+            "After=graphical-session.target\n",
+            "PartOf=graphical-session.target\n",
+            "\n",
+            "[Service]\n",
+            "Type=simple\n",
+            "ExecStart={exe_path} --daemon\n",
+            "Restart=no\n",
+            "\n",
+            "[Install]\n",
+            "WantedBy=graphical-session.target\n",
+        ), exe_path=exe_path);
+        return Ok(());
+    }
+
     // Setup winit event loop.
     let window_event_loop = EventLoop::<Event>::with_user_event().build()?;
 
