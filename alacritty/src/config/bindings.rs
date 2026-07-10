@@ -624,12 +624,11 @@ fn common_keybindings() -> Vec<KeyBinding> {
         ".",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabForward;
         ",",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::MoveTabBackward;
         "t",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::SetTabTitle;
-        // Pane actions — primary via modal menu (Ctrl+G, p, ...).
-        // Alt+arrows below are optional; uncomment to enable direct pane focus:
-        // ArrowRight, ModifiersState::ALT; Action::FocusRight;
-        // ArrowLeft,  ModifiersState::ALT; Action::FocusLeft;
-        // ArrowUp,    ModifiersState::ALT; Action::FocusUp;
-        // ArrowDown,  ModifiersState::ALT; Action::FocusDown;
+        // Pane focus via Alt+arrows. Comment out if you need word navigation in shell.
+        ArrowRight, ModifiersState::ALT; Action::FocusRight;
+        ArrowLeft,  ModifiersState::ALT; Action::FocusLeft;
+        ArrowUp,    ModifiersState::ALT; Action::FocusUp;
+        ArrowDown,  ModifiersState::ALT; Action::FocusDown;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
         "g",        ModifiersState::CONTROL;                                                             Action::ToggleLocked;
