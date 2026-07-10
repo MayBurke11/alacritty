@@ -254,3 +254,4 @@ fn log_config_path(config: &UiConfig) {
 
     info!("{msg}");
 }
+mod pane_layout;
