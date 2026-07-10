@@ -1697,36 +1697,29 @@ impl WindowContext {
             let tab = &mut self.tabs[tab_index];
             let active_pid = tab.active_pane;
 
-            // Lock the active pane's terminal.
-            let (terminal_lock, notifier_ptr, cfg_fd, cfg_pid) = if active_pid == PaneId(0) {
-                let lock = tab.terminal.lock();
-                let np = &mut tab.notifier as *mut Notifier;
-                (lock, np, tab.master_fd, tab.shell_pid)
+            // Lock the active pane's terminal, get notifier/fd/pid (no unsafe needed).
+            let mut terminal;
+            let notifier: &Notifier;
+            #[cfg(not(windows))]
+            let fd: RawFd;
+            #[cfg(not(windows))]
+            let pid: u32;
+            if active_pid == PaneId(0) {
+                terminal = tab.terminal.lock();
+                notifier = &tab.notifier;
+                #[cfg(not(windows))] { fd = tab.master_fd; pid = tab.shell_pid; }
             } else if let Some(pane) = tab.additional_panes.get(&active_pid) {
-                let lock = pane.terminal.lock();
-                let np = &pane.notifier as *const Notifier as *mut Notifier;
-                (lock, np, pane.master_fd, pane.shell_pid)
+                terminal = pane.terminal.lock();
+                notifier = &pane.notifier;
+                #[cfg(not(windows))] { fd = pane.master_fd; pid = pane.shell_pid; }
             } else {
-                let lock = tab.terminal.lock();
-                let np = &mut tab.notifier as *mut Notifier;
-                (lock, np, tab.master_fd, tab.shell_pid)
-            };
-            let mut terminal = terminal_lock;
-            let notifier = unsafe { &mut *notifier_ptr };
+                terminal = tab.terminal.lock();
+                notifier = &tab.notifier;
+                #[cfg(not(windows))] { fd = tab.master_fd; pid = tab.shell_pid; }
+            }
 
             let context = ActionContext {
-                cursor_blink_timed_out: &mut tab.cursor_blink_timed_out,
-                prev_bell_cmd: &mut tab.prev_bell_cmd,
-                message_buffer: &mut tab.message_buffer,
-                inline_search_state: &mut tab.inline_search_state,
-                search_state: &mut tab.search_state,
-                modifiers: &mut self.modifiers,
                 notifier,
-                display: &mut self.display,
-                mouse: &mut self.mouse,
-                touch: &mut self.touch,
-                dirty: &mut self.dirty,
-                occluded: &mut self.occluded,
                 terminal: &mut terminal,
                 tab_terminal_title: &mut tab.terminal_title,
                 tab_detected_title: &tab.detected_title,
@@ -1734,21 +1727,32 @@ impl WindowContext {
                 tab_title_editor_active: self.tab_title_editor.is_some(),
                 run_editor_active: self.run_editor.is_some(),
                 is_active_tab,
-                #[cfg(not(windows))]
-                master_fd: cfg_fd,
-                #[cfg(not(windows))]
-                shell_pid: cfg_pid,
+                clipboard,
+                mouse: &mut self.mouse,
+                touch: &mut self.touch,
+                modifiers: &mut self.modifiers,
+                display: &mut self.display,
+                message_buffer: &mut tab.message_buffer,
+                config: &*tab.config,
+                cursor_blink_timed_out: &mut tab.cursor_blink_timed_out,
+                prev_bell_cmd: &mut tab.prev_bell_cmd,
+                event_proxy: &self.event_proxy,
+                scheduler,
+                search_state: &mut tab.search_state,
+                inline_search_state: &mut tab.inline_search_state,
+                dirty: &mut self.dirty,
+                occluded: &mut self.occluded,
                 preserve_title: self.preserve_title,
                 menu_active: self.menu_state.active,
                 menu_toggle_pending: &mut self.menu_toggle_pending,
                 menu_op_pending: &mut self.menu_op_pending,
                 pane_resize_mode: &mut self.pane_resize_mode,
-                config: &*tab.config,
-                event_proxy: &self.event_proxy,
+                #[cfg(not(windows))]
+                master_fd: fd,
+                #[cfg(not(windows))]
+                shell_pid: pid,
                 #[cfg(target_os = "macos")]
                 event_loop,
-                clipboard,
-                scheduler,
             };
             let mut processor = input::Processor::new(context);
             processor.handle_event(event);

@@ -1059,7 +1059,7 @@ impl Default for InlineSearchState {
 }
 
 pub struct ActionContext<'a, N, T> {
-    pub notifier: &'a mut N,
+    pub notifier: &'a N,
     pub terminal: &'a mut Term<T>,
     pub tab_terminal_title: &'a mut Option<String>,
     pub tab_detected_title: &'a str,

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[cfg(not(windows))]
 use std::os::unix::io::RawFd;
 use std::sync::Arc;
