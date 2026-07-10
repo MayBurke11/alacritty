@@ -45,7 +45,8 @@ use crate::event::{
     MenuState, Mouse, SearchState, TabAction, TabId, TouchPurpose,
 };
 use crate::pane_state::PaneState;
-use crate::pane_tree::{FocusDir, PaneId, PaneNode, SplitDir};
+use crate::pane_layout::PaneLayout;
+use crate::pane_tree::{FocusDir, PaneId, SplitDir};
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
 use crate::message_bar::{Message, MessageBuffer, MessageType};
@@ -124,7 +125,7 @@ struct TerminalTab {
     inline_search_state: InlineSearchState,
     search_state: SearchState,
     // Pane management.
-    pane_tree: PaneNode,
+    pane_tree: PaneLayout,
     active_pane: PaneId,
     additional_panes: std::collections::HashMap<PaneId, PaneState>,
     next_pane_id: u64,
@@ -200,7 +201,7 @@ impl TerminalTab {
             inline_search_state: Default::default(),
             message_buffer: Default::default(),
             search_state: Default::default(),
-            pane_tree: PaneNode::leaf(PaneId(0)),
+            pane_tree: PaneLayout::new(),
             active_pane: PaneId(0),
             additional_panes: Default::default(),
             next_pane_id: 1,
@@ -840,7 +841,7 @@ impl WindowContext {
             title: Option<String>,
             active_pane: u64,
             zoomed_pane: Option<u64>,
-            pane_tree: crate::pane_tree::PaneNode,
+            pane_tree: crate::pane_layout::PaneLayout,
             additional_panes: Vec<SavedPane>,
         }
         #[derive(Serialize)]
@@ -891,7 +892,7 @@ impl WindowContext {
             #[serde(default)]
             zoomed_pane: Option<u64>,
             #[serde(default)]
-            pane_tree: crate::pane_tree::PaneNode,
+            pane_tree: crate::pane_layout::PaneLayout,
             #[serde(default)]
             additional_panes: Vec<SavedPane>,
         }
@@ -928,7 +929,7 @@ impl WindowContext {
             // Restore pane tree.
             if saved.pane_tree.leaf_ids().len() > 1 {
                 let tab = &mut self.tabs[i];
-                tab.pane_tree = saved.pane_tree.clone();
+                tab.pane_tree = if saved.pane_tree.panes().len() > 1 { saved.pane_tree.clone() } else { PaneLayout::new() };
                 tab.next_pane_id = saved.additional_panes.iter()
                     .map(|p| p.pane_id).max().unwrap_or(0) + 1;
                 tab.active_pane = crate::pane_tree::PaneId(saved.active_pane);
@@ -1407,7 +1408,7 @@ impl WindowContext {
         if leaves.len() > 1 {
             use crate::pane_tree::Rect as PRect;
             let viewport = PRect::new(0.0, 0.0, display.size_info.width() as f32, display.size_info.height() as f32);
-            let (pane_rects, divider_rects) = active_tab.pane_tree.leaf_rects(viewport);
+            let (pane_rects, divider_rects) = active_tab.pane_tree.leaf_rects_compat(viewport);
             for divider in &divider_rects {
                 let rr = crate::renderer::rects::RenderRect::new(
                     divider.x, divider.y, divider.width.max(2.0), divider.height.max(2.0),
@@ -1853,7 +1854,7 @@ impl WindowContext {
                 let padding_x = size_info.padding_x();
                 let padding_y = size_info.padding_y();
                 let viewport = crate::pane_tree::Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
-                let (pane_rects, _) = active_tab.pane_tree.leaf_rects(viewport);
+                let (pane_rects, _) = active_tab.pane_tree.leaf_rects_compat(viewport);
                 for (pid, rect) in &pane_rects {
                     if active_tab.zoomed_pane == Some(*pid) { continue; }
                     let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
@@ -2004,7 +2005,7 @@ impl WindowContext {
         use crate::pane_tree::Rect;
         if tab.pane_tree.leaf_ids().len() <= 1 { return Some(tab.active_pane); }
         let viewport = Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
-        let (pane_rects, _) = tab.pane_tree.leaf_rects(viewport);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(viewport);
         for (pane_id, rect) in &pane_rects {
             if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
                 return Some(*pane_id);
@@ -2016,13 +2017,13 @@ impl WindowContext {
     fn divider_at_position(&self, tab: &TerminalTab, size_info: &crate::display::SizeInfo, x: f32, y: f32) -> Option<crate::pane_tree::SplitId> {
         use crate::pane_tree::Rect;
         let viewport = Rect::new(0.0, 0.0, size_info.width() as f32, size_info.height() as f32);
-        let (_, divider_rects) = tab.pane_tree.leaf_rects(viewport);
+        let (_, divider_rects) = tab.pane_tree.leaf_rects_compat(viewport);
         for (i, rect) in divider_rects.iter().enumerate() {
             let margin = 1.0;
             if x >= rect.x - margin && x < rect.x + rect.width + margin
                 && y >= rect.y - margin && y < rect.y + rect.height + margin
             {
-                return tab.pane_tree.find_split_by_divider_index(i);
+                return None; // Divider index not needed in edge-adjacency model
             }
         }
         None
@@ -2044,12 +2045,10 @@ impl WindowContext {
         let event_loop_proxy = self.event_proxy.clone();
         let tab_id = self.active_tab().id;
         let tab = self.active_tab_mut();
-        tab.next_pane_id += 1;
-        let split_id = crate::pane_tree::SplitId(tab.next_pane_id);
-        tab.next_pane_id += 1;
-        tab.pane_tree.split(tab.active_pane, new_pane_id, split_id, direction);
+        tab.next_pane_id = tab.next_pane_id.max(new_pane_id.0 + 1);
+        tab.pane_tree.split(tab.active_pane, new_pane_id, direction);
         let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
-        let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(full_viewport);
         for (pane_id, rect) in &pane_rects {
             if *pane_id == new_pane_id { continue; }
             let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
@@ -2107,10 +2106,7 @@ impl WindowContext {
         let leaves = self.active_tab().pane_tree.leaf_ids();
         let close_pos = leaves.iter().position(|&id| id == pane_to_close).unwrap_or(0);
         let sibling = if close_pos > 0 { leaves[close_pos - 1] } else { leaves[1] };
-        let result = self.active_tab_mut().pane_tree.remove(pane_to_close);
-        if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
-            self.active_tab_mut().pane_tree = replacement;
-        }
+        self.active_tab_mut().pane_tree.close(pane_to_close);
         self.active_tab_mut().additional_panes.remove(&pane_to_close);
         self.active_tab_mut().active_pane = sibling;
         // Resize remaining pane(s) to full viewport.
@@ -2141,7 +2137,7 @@ impl WindowContext {
         if leaves.len() <= 1 { return; }
         let active = tab.active_pane;
         let viewport = Rect::new(0.0, 0.0, self.display.size_info.width() as f32, self.display.size_info.height() as f32);
-        let (pane_rects, _) = tab.pane_tree.leaf_rects(viewport);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(viewport);
         let active_rect = pane_rects.iter().find(|(id, _)| *id == active).map(|(_, r)| r.clone());
         let Some(active_rect) = active_rect else { return };
         let active_cx = active_rect.x + active_rect.width * 0.5; let active_cy = active_rect.y + active_rect.height * 0.5;
@@ -2189,7 +2185,7 @@ impl WindowContext {
                 let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(size_info.into())); }
         } else {
             let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
-            let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+            let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(full_viewport);
             for (pid, rect) in &pane_rects {
                 let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
                 if *pid == PaneId(0) { let mut t = tab.terminal.lock(); t.resize(ps);
@@ -2212,9 +2208,9 @@ impl WindowContext {
         let tab = self.active_tab_mut();
         let pane_id = tab.active_pane;
         let delta = 0.05;
-        if !tab.pane_tree.adjust_ratio(pane_id, dir, grow, delta) { return; }
+        tab.pane_tree.adjust_ratio_compat(pane_id, dir, grow, delta);
         let full_viewport = Rect::new(0.0, 0.0, viewport_w, viewport_h);
-        let (pane_rects, _) = tab.pane_tree.leaf_rects(full_viewport);
+        let (pane_rects, _) = tab.pane_tree.leaf_rects_compat(full_viewport);
         for (pid, rect) in &pane_rects {
             let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false);
             if *pid == PaneId(0) { let mut t = tab.terminal.lock(); t.resize(ps);
@@ -2242,10 +2238,7 @@ impl WindowContext {
                         let close_pos = leaves.iter().position(|&id| id == pid).unwrap_or(0);
                         if close_pos > 0 { leaves[close_pos - 1] } else { leaves[1] }
                     };
-                    let result = self.tabs[tab_idx].pane_tree.remove(pid);
-                    if let crate::pane_tree::RemoveResult::CollapseToSibling(replacement) = result {
-                        self.tabs[tab_idx].pane_tree = replacement;
-                    }
+                    self.tabs[tab_idx].pane_tree.close(pid);
                     self.tabs[tab_idx].additional_panes.remove(&pid);
                     self.tabs[tab_idx].active_pane = sibling;
                     // If only one pane remains, resize it to full viewport.
