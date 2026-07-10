@@ -419,41 +419,54 @@ impl ApplicationHandler<Event> for Processor {
                 }
             },
             #[cfg(unix)]
-            (EventType::ListTabsIPC(stream), _) => {
-                let tab_info = self.windows.values()
+            (EventType::ListTabsIPC(stream, window_id), _) => {
+                let target = window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                let tab_info = self.windows.iter()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
                     .next()
-                    .map(|w| w.tabs_info_json())
+                    .map(|(_, w)| w.tabs_info_json())
                     .unwrap_or_default();
                 if let Ok(mut s) = stream.try_clone() {
                     ipc::send_reply(&mut s, SocketReply::ListTabs(tab_info));
                 }
             },
             #[cfg(unix)]
-            (EventType::SelectTabIPC(index), _) => {
-                for window_context in self.windows.values_mut() {
+            (EventType::SelectTabIPC(index, window_id), _) => {
+                let target = window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                for (_, window_context) in self.windows.iter_mut()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
+                {
                     window_context.select_tab_at(index.saturating_sub(1));
-                    break;
+                    if target.is_some() { break; }
                 }
             },
             #[cfg(unix)]
-            (EventType::CloseTabIPC(index), _) => {
-                for window_context in self.windows.values_mut() {
+            (EventType::CloseTabIPC(index, window_id), _) => {
+                let target = window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                for (_, window_context) in self.windows.iter_mut()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
+                {
                     window_context.close_tab_at(index.saturating_sub(1));
-                    break;
+                    if target.is_some() { break; }
                 }
             },
             #[cfg(unix)]
-            (EventType::PinTabIPC(index), _) => {
-                for window_context in self.windows.values_mut() {
+            (EventType::PinTabIPC(index, window_id), _) => {
+                let target = window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                for (_, window_context) in self.windows.iter_mut()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
+                {
                     window_context.toggle_pin_at(index.saturating_sub(1));
-                    break;
+                    if target.is_some() { break; }
                 }
             },
             #[cfg(unix)]
-            (EventType::SaveTabsIPC(stream), _) => {
-                let tab_json = self.windows.values()
+            (EventType::SaveTabsIPC(stream, window_id), _) => {
+                let target = window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                let tab_json = self.windows.iter()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
                     .next()
-                    .map(|w| w.tabs_save_json())
+                    .map(|(_, w)| w.tabs_save_json())
                     .unwrap_or_default();
                 if let Ok(mut s) = stream.try_clone() {
                     ipc::send_reply(&mut s, SocketReply::SaveTabs(tab_json));
@@ -461,9 +474,12 @@ impl ApplicationHandler<Event> for Processor {
             },
             #[cfg(unix)]
             (EventType::QuickRunIPC(options), _) => {
-                for window_context in self.windows.values_mut() {
+                let target = options.window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                for (_, window_context) in self.windows.iter_mut()
+                    .filter(|(id, _)| target.is_none() || target == Some(**id))
+                {
                     window_context.quick_run_ipc(options.clone());
-                    break;
+                    if target.is_some() { break; }
                 }
             },
             // Shutdown all windows.
@@ -663,15 +679,15 @@ pub enum EventType {
     #[cfg(unix)]
     CreateTabIPC(TabCreateOptions),
     #[cfg(unix)]
-    ListTabsIPC(Arc<UnixStream>),
+    ListTabsIPC(Arc<UnixStream>, Option<i128>),
     #[cfg(unix)]
-    SelectTabIPC(usize),
+    SelectTabIPC(usize, Option<i128>),
     #[cfg(unix)]
-    CloseTabIPC(usize),
+    CloseTabIPC(usize, Option<i128>),
     #[cfg(unix)]
-    PinTabIPC(usize),
+    PinTabIPC(usize, Option<i128>),
     #[cfg(unix)]
-    SaveTabsIPC(Arc<UnixStream>),
+    SaveTabsIPC(Arc<UnixStream>, Option<i128>),
     #[cfg(unix)]
     QuickRunIPC(TabQuickRun),
     BlinkCursor,
@@ -2649,11 +2665,11 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::Shutdown => (),
                 EventType::Tab(_) => (),
                 EventType::CreateTabIPC(_)
-                | EventType::ListTabsIPC(_)
-                | EventType::SelectTabIPC(_)
-                | EventType::CloseTabIPC(_)
-                | EventType::PinTabIPC(_)
-                | EventType::SaveTabsIPC(_)
+                | EventType::ListTabsIPC(..)
+                | EventType::SelectTabIPC(..)
+                | EventType::CloseTabIPC(..)
+                | EventType::PinTabIPC(..)
+                | EventType::SaveTabsIPC(..)
                 | EventType::QuickRunIPC(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)

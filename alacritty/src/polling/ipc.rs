@@ -89,24 +89,24 @@ impl IpcListener {
                 let event = Event::new(EventType::CreateTabIPC(options), None);
                 let _ = self.event_proxy.send_event(event);
             },
-            SocketMessage::ListTabs(_options) => {
-                let event = Event::new(EventType::ListTabsIPC(Arc::new(stream)), None);
+            SocketMessage::ListTabs(options) => {
+                let event = Event::new(EventType::ListTabsIPC(Arc::new(stream), options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::SelectTab(options) => {
-                let event = Event::new(EventType::SelectTabIPC(options.index), None);
+                let event = Event::new(EventType::SelectTabIPC(options.index, options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::CloseTab(options) => {
-                let event = Event::new(EventType::CloseTabIPC(options.index), None);
+                let event = Event::new(EventType::CloseTabIPC(options.index, options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::PinTab(options) => {
-                let event = Event::new(EventType::PinTabIPC(options.index), None);
+                let event = Event::new(EventType::PinTabIPC(options.index, options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
-            SocketMessage::SaveTabs(_options) => {
-                let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream)), None);
+            SocketMessage::SaveTabs(options) => {
+                let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream), options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::QuickRun(options) => {
