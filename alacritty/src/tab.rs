@@ -68,6 +68,10 @@ pub struct TerminalTab {
 
     pub panes: PaneManager,
 
+    /// Bell fired while tab was inactive.
+
+    pub bell_pending: bool,
+
     #[cfg(not(windows))]
 
     pub master_fd: RawFd,
@@ -211,6 +215,7 @@ impl TerminalTab {
             search_state: Default::default(),
 
             panes: PaneManager::new(),
+            bell_pending: false,
 
         })
 

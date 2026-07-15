@@ -334,7 +334,10 @@ impl WindowContext {
             .replace("{index}", &(index + 1).to_string())
             .replace("{num_windows}", "1");
 
-        let title = if rendered.is_empty() { title.to_owned() } else { rendered };
+        let mut title = if rendered.is_empty() { title.to_owned() } else { rendered };
+        if tab.bell_pending {
+            title = self.config.tabs.tab_bell_indicator.replace("{title}", &title);
+        }
         if tab.pinned { format!("*{}", title) } else { title }
     }
 
@@ -360,6 +363,7 @@ impl WindowContext {
 
         self.last_active_tab_id = Some(self.tabs[self.active_tab].id);
         self.active_tab = index;
+        self.tabs[index].bell_pending = false;
         info!("[tabs] switch to tab {} (of {})", index + 1, self.tabs.len());
         let config = self.config.clone();
         self.active_tab_mut().refresh_detected_title(&config);
@@ -867,6 +871,8 @@ impl WindowContext {
                     .min(self.tabs.len() - 1)
                     .saturating_sub(usize::from(index < self.active_tab))
             });
+
+        self.tabs[self.active_tab].bell_pending = false;
 
         let config = self.config.clone();
         self.active_tab_mut().refresh_detected_title(&config);
@@ -1529,6 +1535,7 @@ impl WindowContext {
                 tab_title_editor_active: self.tab_title_editor.is_some(),
                 run_editor_active: self.run_editor.is_some(),
                 is_active_tab,
+                bell_pending: &mut tab.bell_pending,
                 clipboard,
                 mouse: &mut self.mouse,
                 touch: &mut self.touch,

@@ -1083,6 +1083,7 @@ pub struct ActionContext<'a, N, T> {
     pub tab_title_editor_active: bool,
     pub run_editor_active: bool,
     pub is_active_tab: bool,
+    pub bell_pending: &'a mut bool,
     pub clipboard: &'a mut Clipboard,
     pub mouse: &'a mut Mouse,
     pub touch: &'a mut TouchPurpose,
@@ -2610,6 +2611,13 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                         *self.ctx.dirty = true;
                     },
                     TerminalEvent::Bell => {
+                        // Notify via tab indicator when tab is inactive.
+                        if !self.ctx.is_active_tab {
+                            *self.ctx.bell_pending = true;
+                        }
+                        *self.ctx.dirty = true;
+                        self.ctx.display.window.request_redraw();
+
                         // Set window urgency hint when window is not focused.
                         let focused = self.ctx.terminal.is_focused;
                         if !focused && self.ctx.terminal.mode().contains(TermMode::URGENCY_HINTS) {

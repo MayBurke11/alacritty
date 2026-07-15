@@ -24,6 +24,8 @@ pub struct Tabs {
     pub inactive_tab_font_style: TabFontStyle,
     pub tab_bar_background: Option<Rgb>,
     pub mouse: TabMouse,
+    /// Template for bell indicator on inactive tabs. `{title}` is replaced.
+    pub tab_bell_indicator: String,
     /// Preset tabs to create on startup.
     pub presets: Vec<TabPreset>,
 }
@@ -66,6 +68,7 @@ impl Default for Tabs {
             tab_bar_background: None,
             mouse: Default::default(),
             presets: Vec::new(),
+            tab_bell_indicator: String::from("! {title}"),
         }
     }
 }
