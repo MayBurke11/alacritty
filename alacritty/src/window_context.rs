@@ -45,6 +45,7 @@ use crate::event::{
     MenuState, Mouse, SearchState, TabAction, TabId, TouchPurpose,
 };
 use crate::pane_manager::PaneManager;
+use crate::menu_controller::MenuController;
 use crate::tab::{TerminalTab, TabTitleEditor};
 use crate::pane_state::PaneState;
 use crate::pane_tree::{FocusDir, PaneId, PaneNode, SplitDir};
@@ -113,12 +114,8 @@ pub struct WindowContext {
     last_active_tab_id: Option<TabId>,
     tab_title_editor: Option<TabTitleEditor>,
     run_editor: Option<String>,
-    /// Modal menu state.
-    menu_state: MenuState,
-    /// Pending menu toggle from keyboard handler (synchronous, no frame delay).
-    menu_toggle_pending: bool,
-    /// Pending synchronous menu operation (no frame delay).
-    menu_op_pending: Vec<MenuOp>,
+    /// Modal menu controller.
+    menu: MenuController,
     /// Divider drag state: (tab_idx, split_id, direction, start_x, start_y, start_ratio).
     divider_drag: Option<(usize, crate::pane_tree::SplitId, SplitDir, f32, f32, f32)>,
     /// Alt+arrows resize panes instead of focusing.
@@ -1027,9 +1024,7 @@ impl WindowContext {
             last_active_tab_id: None,
             tab_title_editor: None,
             run_editor: None,
-            menu_state: MenuState::default(),
-            menu_toggle_pending: false,
-            menu_op_pending: Vec::new(),
+            menu: MenuController::new(),
             divider_drag: None,
             pane_resize_mode: false,
             window_close_confirmation_pending: false,
@@ -1217,7 +1212,7 @@ impl WindowContext {
                 terminal, scheduler, &active_tab.message_buffer, &tab_config,
                 &mut active_tab.search_state, &tab_titles,
                 self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
-                self.run_editor.as_deref(), &self.menu_state, None, true, false,
+                self.run_editor.as_deref(), &self.menu.state, None, true, false,
             );
             return;
         }
@@ -1254,7 +1249,7 @@ impl WindowContext {
                     &mut active_tab.search_state,
                     if *pane_id == active_pane { &tab_titles } else { &[] },
                     if *pane_id == active_pane { self.tab_title_editor.as_ref().map(|e| e.value.as_str()) } else { None },
-                    self.run_editor.as_deref(), &self.menu_state,
+                    self.run_editor.as_deref(), &self.menu.state,
                     Some(clip), *pane_id == active_pane, true,
                 );
             }
@@ -1299,7 +1294,7 @@ impl WindowContext {
                     },
                 };
                 let pc = active_tab.panes.tree.leaf_ids().len();
-                let bar_labels = self.menu_state.bar_labels(&tab_config.menu, pc, self.pane_resize_mode);
+                let bar_labels = self.menu.state.bar_labels(&tab_config.menu, pc, self.pane_resize_mode);
                 let labels: Vec<(String, bool)> = bar_labels.iter().map(|(l, f)| (l.clone(), *f)).collect();
                 display.draw_bar(&tab_config, &labels, menu_line, menu_edge);
             }
@@ -1328,7 +1323,7 @@ impl WindowContext {
                 terminal, scheduler, &active_tab.message_buffer, &tab_config,
                 &mut active_tab.search_state, &tab_titles,
                 self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
-                self.run_editor.as_deref(), &self.menu_state, None, true, false,
+                self.run_editor.as_deref(), &self.menu.state, None, true, false,
             );
         }
     }
@@ -1413,8 +1408,8 @@ impl WindowContext {
                         TabAction::RunPopWord => self.run_editor_pop_word(),
                         TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
                         TabAction::ToggleMenu(idx) => {
-                            self.menu_state.focus = *idx;
-                            let sel = self.menu_state.select(&self.config.menu);
+                            self.menu.state.focus = *idx;
+                            let sel = self.menu.state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
                             self.dirty = true;
                         },
@@ -1423,52 +1418,52 @@ impl WindowContext {
                             self.dirty = true;
                         },
                         TabAction::ToggleLocked => {
-                            self.menu_state.active = !self.menu_state.active;
-                            if !self.menu_state.active {
-                                self.menu_state.path.clear();
-                                self.menu_state.list_mode = None;
-                                self.menu_state.focus = 0;
+                            self.menu.state.active = !self.menu.state.active;
+                            if !self.menu.state.active {
+                                self.menu.state.path.clear();
+                                self.menu.state.list_mode = None;
+                                self.menu.state.focus = 0;
                             }
                             self.dirty = true;
                         },
                         TabAction::MenuFocusLeft => {
-                            if self.menu_state.focus > 0 {
-                                self.menu_state.focus -= 1;
+                            if self.menu.state.focus > 0 {
+                                self.menu.state.focus -= 1;
                             }
                             self.dirty = true;
                         },
                         TabAction::MenuFocusRight => {
-                            let count = self.menu_state.item_count(&self.config.menu);
-                            if self.menu_state.focus + 1 <= count {
-                                self.menu_state.focus += 1;
+                            let count = self.menu.state.item_count(&self.config.menu);
+                            if self.menu.state.focus + 1 <= count {
+                                self.menu.state.focus += 1;
                             }
                             self.dirty = true;
                         },
                         TabAction::MenuSelect => {
-                            let sel = self.menu_state.select(&self.config.menu);
+                            let sel = self.menu.state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
                             self.dirty = true;
                         },
                         TabAction::MenuBack => {
-                            self.menu_state.back();
+                            self.menu.state.back();
                             self.dirty = true;
                         },
                         TabAction::MenuClick(idx) => {
-                            self.menu_state.focus = *idx;
-                            let sel = self.menu_state.select(&self.config.menu);
+                            self.menu.state.focus = *idx;
+                            let sel = self.menu.state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
                             self.dirty = true;
                         },
                         TabAction::MenuLetterKey(ch) => {
-                            let labels = self.menu_state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
+                            let labels = self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
                             let ch_lower: char = ch.to_lowercase().next().unwrap_or(*ch);
                             for (i, (label, _)) in labels.iter().enumerate() {
                                 if i == 0 { continue; }
                                 let first_char = label.chars().next()
                                     .map(|c| c.to_lowercase().next().unwrap_or(c));
                                 if first_char == Some(ch_lower) {
-                                    self.menu_state.focus = i;
-                                    let sel = self.menu_state.select(&self.config.menu);
+                                    self.menu.state.focus = i;
+                                    let sel = self.menu.state.select(&self.config.menu);
                                     self.handle_menu_selection(sel);
                                     break;
                                 }
@@ -1550,9 +1545,9 @@ impl WindowContext {
                 dirty: &mut self.dirty,
                 occluded: &mut self.occluded,
                 preserve_title: self.preserve_title,
-                menu_active: self.menu_state.active,
-                menu_toggle_pending: &mut self.menu_toggle_pending,
-                menu_op_pending: &mut self.menu_op_pending,
+                menu_active: self.menu.state.active,
+                menu_toggle_pending: &mut self.menu.toggle_pending,
+                menu_op_pending: &mut self.menu.op_pending,
                 pane_resize_mode: &mut self.pane_resize_mode,
                 #[cfg(not(windows))]
                 master_fd: fd,
@@ -1566,56 +1561,56 @@ impl WindowContext {
         }
 
         // Synchronous menu toggle (no frame delay).
-        if std::mem::take(&mut self.menu_toggle_pending) {
-            self.menu_state.active = !self.menu_state.active;
-            if !self.menu_state.active {
-                self.menu_state.path.clear();
-                self.menu_state.list_mode = None;
-                self.menu_state.focus = 0;
+        if std::mem::take(&mut self.menu.toggle_pending) {
+            self.menu.state.active = !self.menu.state.active;
+            if !self.menu.state.active {
+                self.menu.state.path.clear();
+                self.menu.state.list_mode = None;
+                self.menu.state.focus = 0;
             }
             log::debug!("[menu-sync] op=ToggleLocked AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
-                self.menu_state.active, self.menu_state.path,
-                self.menu_state.list_mode.is_some(), self.menu_state.focus,
-                self.menu_state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+                self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus,
+                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
             self.dirty = true;
         }
 
         // Synchronous menu operations (no frame delay).
-        for op in std::mem::take(&mut self.menu_op_pending) {
+        for op in std::mem::take(&mut self.menu.op_pending) {
             log::debug!("[menu-sync] op={:?} BEFORE: active={} path={:?} list={:?} focus={}",
-                op, self.menu_state.active, self.menu_state.path,
-                self.menu_state.list_mode.is_some(), self.menu_state.focus);
+                op, self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus);
             match op {
                 MenuOp::FocusLeft => {
-                    if self.menu_state.focus > 0 {
-                        self.menu_state.focus -= 1;
+                    if self.menu.state.focus > 0 {
+                        self.menu.state.focus -= 1;
                     }
                     self.dirty = true;
                 },
                 MenuOp::FocusRight => {
-                    let count = self.menu_state.item_count(&self.config.menu);
-                    if self.menu_state.focus + 1 <= count {
-                        self.menu_state.focus += 1;
+                    let count = self.menu.state.item_count(&self.config.menu);
+                    if self.menu.state.focus + 1 <= count {
+                        self.menu.state.focus += 1;
                     }
                     self.dirty = true;
                 },
                 MenuOp::Select => {
-                    let sel = self.menu_state.select(&self.config.menu);
+                    let sel = self.menu.state.select(&self.config.menu);
                     self.handle_menu_selection(sel);
                     self.dirty = true;
                 },
                 MenuOp::Back => {
-                    self.menu_state.back();
+                    self.menu.state.back();
                     self.dirty = true;
                 },
                 MenuOp::Click(idx) => {
-                    self.menu_state.focus = idx;
-                    let sel = self.menu_state.select(&self.config.menu);
+                    self.menu.state.focus = idx;
+                    let sel = self.menu.state.select(&self.config.menu);
                     self.handle_menu_selection(sel);
                     self.dirty = true;
                 },
                 MenuOp::LetterKey(ch) => {
-                    let labels = self.menu_state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
+                    let labels = self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
                     let ch_lower: char = ch.to_lowercase().next().unwrap_or(ch);
                     for (i, (label, _)) in labels.iter().enumerate() {
                         if i == 0 { continue; }
@@ -1624,8 +1619,8 @@ impl WindowContext {
                         if first_char == Some(ch_lower) {
                             log::debug!("[menu-sync] LetterKey '{}' matched label '{}' at idx={}",
                                 ch, label, i);
-                            self.menu_state.focus = i;
-                            let sel = self.menu_state.select(&self.config.menu);
+                            self.menu.state.focus = i;
+                            let sel = self.menu.state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
                             break;
                         }
@@ -1634,9 +1629,9 @@ impl WindowContext {
                 },
             }
             log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
-                op, self.menu_state.active, self.menu_state.path,
-                self.menu_state.list_mode.is_some(), self.menu_state.focus,
-                self.menu_state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+                op, self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus,
+                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
         }
 
         self.sync_focus();
