@@ -2107,7 +2107,7 @@ impl Drop for WindowContext {
 
 #[cfg(test)]
 mod tests {
-    use super::displayed_title;
+    use crate::util::displayed_title;
 
     #[test]
     fn displayed_title_uses_detected_when_terminal_title_is_empty() {
