@@ -74,6 +74,10 @@ pub struct Options {
     #[clap(long, conflicts_with_all = ["daemon", "restore", "embed"])]
     pub create_config: bool,
 
+    /// Write config to ~/.config/alacritty/alacritty.toml (with --create-config).
+    #[clap(long, requires = "create_config")]
+    pub overwrite: bool,
+
     /// Print a systemd user unit file to stdout.
     #[clap(long, conflicts_with_all = ["daemon", "restore", "embed", "create_config"])]
     pub create_systemd_unit: bool,
