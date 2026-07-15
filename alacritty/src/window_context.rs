@@ -2030,7 +2030,8 @@ impl WindowContext {
 
     fn split_pane(&mut self, direction: SplitDir) {
         log::info!("[panes] split {:?}", direction);
-        self.display.cursor_hidden = false; // Show cursor in new pane
+        self.display.cursor_hidden = false;
+        self.active_tab_mut().cursor_blink_timed_out = false;
         use crate::pane_tree::Rect;
         let new_pane_id = PaneId(self.active_tab().next_pane_id);
         let full_size_info = self.display.size_info;
@@ -2101,6 +2102,8 @@ impl WindowContext {
 
     fn close_pane(&mut self) {
         log::info!("[panes] close");
+        self.display.cursor_hidden = false;
+        self.active_tab_mut().cursor_blink_timed_out = false;
         let leaves_before = self.active_tab().pane_tree.leaf_ids().len();
         if leaves_before <= 1 { return; }
         let pane_to_close = self.active_tab().active_pane;
@@ -2138,6 +2141,7 @@ impl WindowContext {
     fn focus_pane(&mut self, direction: FocusDir) {
         log::info!("[panes] focus {:?}", direction);
         self.display.cursor_hidden = false;
+        self.active_tab_mut().cursor_blink_timed_out = false;
         use crate::pane_tree::Rect;
         let tab = self.active_tab(); let leaves = tab.pane_tree.leaf_ids();
         if leaves.len() <= 1 { return; }
@@ -2235,6 +2239,8 @@ impl WindowContext {
         let leaves = self.tabs[tab_idx].pane_tree.leaf_ids().len();
         if let Some(pid) = pane_id {
             if pid != PaneId(0) || leaves > 1 {
+                self.display.cursor_hidden = false;
+                self.tabs[tab_idx].cursor_blink_timed_out = false;
                 self.tabs[tab_idx].active_pane = pid;
                 let leaves_before = self.tabs[tab_idx].pane_tree.leaf_ids().len();
                 if leaves_before > 1 {
