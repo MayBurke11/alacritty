@@ -525,8 +525,11 @@ impl WindowContext {
 
     fn sync_focus(&mut self) {
         for (index, tab) in self.tabs.iter_mut().enumerate() {
-            let mut terminal = tab.terminal.lock();
-            terminal.is_focused = self.focused && index == self.active_tab;
+            let is_active_tab = self.focused && index == self.active_tab;
+            tab.terminal.lock().is_focused = is_active_tab && tab.active_pane == PaneId(0);
+            for (_, pane) in &tab.additional_panes {
+                pane.terminal.lock().is_focused = is_active_tab && tab.active_pane == pane.pane_id;
+            }
         }
     }
 
