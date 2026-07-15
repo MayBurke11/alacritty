@@ -11,7 +11,7 @@ save/restore, and IPC — built alongside AI (OpenCode).
 
 ### Features
 
-- **Tabs** — `Ctrl+T` create, `Ctrl+W` close, `Ctrl+Tab` switch. Tab bar with 5 styles (Slant, Separator, Fade, Powerline, Hidden). Pin tabs, rename, move, per-tab titles with hysteresis.
+- **Tabs** — `Ctrl+Shift+T` create, `Ctrl+Shift+W` close, `Ctrl+Tab` switch. Tab bar with 5 styles (Slant, Separator, Fade, Powerline, Hidden). Pin tabs, rename, move, per-tab titles with hysteresis.
 - **Modal Menu Bar** — `Ctrl+G` unlocks, letter-key navigation, nested submenus, list mode (session files). Same rendering mechanism as tab bar via `draw_bar(edge)`.
 - **Tiling Panes (BSP Tree)** — Split right/down, resize (`Ctrl+G, p, r` + `Alt+arrows`), focus (`Alt+arrows`), zoom (`Alt+F`), close (`Ctrl+Shift+#`). Fixup_subtree preserves far-side pixel positions on resize (19/19 tests).
 - **Session Save/Restore** — `Ctrl+G, s, s` saves to `~/.config/alacritty/sessions/`. `--restore` CLI flag. Pane tree + foreground commands preserved.
@@ -33,8 +33,8 @@ cargo build --release
 | Key | Action |
 |---|---|
 | `Ctrl+G` | Toggle menu bar (LOCKED ↔ ACTIVE) |
-| `Ctrl+T` | Create tab |
-| `Ctrl+W` | Close tab |
+| `Ctrl+Shift+T` | Create tab |
+| `Ctrl+Shift+W` | Close tab |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next/previous tab |
 | `Alt+←/→/↑/↓` | Focus pane (add to personal config) |
 | `Alt+F` | Toggle pane zoom (add to personal config) |
@@ -109,7 +109,6 @@ tab_bar_min_tabs = 1
 ### Known Issues
 
 - Menu bar `top` edge may not render correctly. Use `menu_bar_edge = "bottom"` as workaround.
-- `Ctrl+W` default binding conflicts with bash/readline (delete word). Rebind or use menu `Ctrl+G, t, k`.
 - `Alt+arrows` focus bindings disabled by default — add to personal config.
 - See `docs/known-bugs.md` for more.
 
