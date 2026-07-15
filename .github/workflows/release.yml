@@ -27,7 +27,7 @@ jobs:
         run: cargo build --release
       - name: Create Release
         run: |
-          BIN="alacritty"
+          BIN="alacritty.bin"
           cp target/release/alacritty "$BIN"
           chmod +x "$BIN"
           gh release create "${{ github.ref_name }}" "$BIN" \
