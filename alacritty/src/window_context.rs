@@ -609,6 +609,13 @@ impl WindowContext {
                             Err(err) => log::warn!("Failed to load session {}: {err}", path.display()),
                         }
                     },
+                    "tabs" => {
+                        if let Ok(index) = value.parse::<usize>() {
+                            if index < self.tabs.len() {
+                                self.set_active_tab(index);
+                            }
+                        }
+                    },
                     _ => {},
                 }
             },
@@ -1199,6 +1206,15 @@ impl WindowContext {
             })
             .collect();
         let active_tab_idx = self.active_tab;
+
+        // Populate tab list into menu state if in tab list mode (before active_tab borrow).
+        if let Some(crate::event::ListMode::Tabs(_)) = self.menu.state.list_mode {
+            let entries: Vec<(usize, String)> = self.tabs.iter().enumerate()
+                .map(|(i, t)| (i, t.display_title().to_owned()))
+                .collect();
+            self.menu.state.set_tab_list(entries);
+        }
+
         let tab_config = self.tabs[active_tab_idx].config.clone();
         let (display, tabs) = (&mut self.display, &mut self.tabs);
         let active_tab = &mut tabs[active_tab_idx];

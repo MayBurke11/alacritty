@@ -760,6 +760,8 @@ pub enum TabAction {
 pub enum ListMode {
     /// Browsing saved session files.
     Sessions(Vec<String>),
+    /// Browsing open tabs. (tab_index, tab_title)
+    Tabs(Vec<(usize, String)>),
 }
 
 /// Pending synchronous menu operation (no frame delay).
@@ -812,6 +814,7 @@ impl MenuState {
         if let Some(ref list_mode) = self.list_mode {
             let mode_label = match list_mode {
                 ListMode::Sessions(_) => " LOAD ",
+                ListMode::Tabs(_) => " FOCUS ",
             };
             labels.push((mode_label.to_string(), false));
             match list_mode {
@@ -819,6 +822,12 @@ impl MenuState {
                     for (i, item) in items.iter().enumerate() {
                         let focused = self.focus == i + 1;
                         labels.push((format!(" {item} "), focused));
+                    }
+                },
+                ListMode::Tabs(items) => {
+                    for (i, (_tab_index, title)) in items.iter().enumerate() {
+                        let focused = self.focus == i + 1;
+                        labels.push((format!(" {title} "), focused));
                     }
                 },
             }
@@ -879,6 +888,17 @@ impl MenuState {
                         return Some(MenuSelection::List { list_type: "sessions".into(), value: filename });
                     }
                 },
+                ListMode::Tabs(items) => {
+                    if item_idx < items.len() {
+                        let (tab_index, _title) = &items[item_idx];
+                        let tab_index = *tab_index;
+                        self.list_mode = None;
+                        self.path.clear();
+                        self.focus = 0;
+                        self.active = false;
+                        return Some(MenuSelection::List { list_type: "tabs".into(), value: tab_index.to_string() });
+                    }
+                },
             }
             return None;
         }
@@ -910,10 +930,15 @@ impl MenuState {
                     }
                     entries.sort();
                     if entries.is_empty() {
-                        // Nothing to load — do nothing.
                         return None;
                     }
                     self.list_mode = Some(ListMode::Sessions(entries));
+                    self.focus = 0;
+                    return None;
+                },
+                "tabs" => {
+                    // Enter tab list mode — entries populated by WindowContext before render.
+                    self.list_mode = Some(ListMode::Tabs(Vec::new()));
                     self.focus = 0;
                     return None;
                 },
@@ -971,9 +996,17 @@ impl MenuState {
         if let Some(ref list_mode) = self.list_mode {
             match list_mode {
                 ListMode::Sessions(items) => items.len(),
+                ListMode::Tabs(items) => items.len(),
             }
         } else {
             self.items_at(menu).len()
+        }
+    }
+
+    /// Populate tab list entries from WindowContext (called before each render).
+    pub fn set_tab_list(&mut self, entries: Vec<(usize, String)>) {
+        if let Some(ListMode::Tabs(_)) = self.list_mode {
+            self.list_mode = Some(ListMode::Tabs(entries));
         }
     }
 }
