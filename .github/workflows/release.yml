@@ -8,7 +8,6 @@ permissions:
   contents: write
 
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -21,35 +20,20 @@ jobs:
         run: |
           sudo apt update
           sudo apt install cmake pkg-config libfreetype6-dev libfontconfig1-dev \
-            libxcb-xfixes0-dev libxkbcommon-dev python3 scdoc
+            libxcb-xfixes0-dev libxkbcommon-dev python3
       - name: Test
         run: cargo test --release
       - name: Build
         run: cargo build --release
-      - name: Generate manpages
+      - name: Create Release
         run: |
-          scdoc < extra/man/alacritty.1.scd | gzip -c > "./alacritty.1.gz"
-          scdoc < extra/man/alacritty-msg.1.scd | gzip -c > "./alacritty-msg.1.gz"
-          scdoc < extra/man/alacritty.5.scd | gzip -c > "./alacritty.5.gz"
-          scdoc < extra/man/alacritty-bindings.5.scd | gzip -c > "./alacritty-bindings.5.gz"
-          scdoc < extra/man/alacritty-escapes.7.scd | gzip -c > "./alacritty-escapes.7.gz"
-      - name: Upload Assets
-        run: |
-          binpath="alacritty-linux-x86_64"
-          cp target/release/alacritty "$binpath"
-          chmod +x "$binpath"
-
-          mv ./extra/logo/alacritty-term.svg ./Alacritty.svg
-
-          ./.github/workflows/upload_asset.sh "$binpath"
-          ./.github/workflows/upload_asset.sh ./Alacritty.svg $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./alacritty.1.gz $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./alacritty-msg.1.gz $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./alacritty.5.gz $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./alacritty-bindings.5.gz $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./alacritty-escapes.7.gz $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./extra/completions/alacritty.bash $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./extra/completions/alacritty.fish $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./extra/completions/_alacritty $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./extra/linux/Alacritty.desktop $GITHUB_TOKEN
-          ./.github/workflows/upload_asset.sh ./extra/alacritty.info $GITHUB_TOKEN
+          BIN="alacritty"
+          cp target/release/alacritty "$BIN"
+          chmod +x "$BIN"
+          gh release create "${{ github.ref_name }}" "$BIN" \
+            --title "Alacritty-Kitty ${{ github.ref_name }}" \
+            --notes "Pre-built Linux x86_64 binary. Requires Vulkan/OpenGL drivers." \
+            --draft=false \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
