@@ -21,7 +21,7 @@ save/restore, and IPC — built alongside AI (OpenCode).
 ### One-Line Install
 
 ```bash
-curl -fsSL https://github.com/MayBurke11/alacritty/releases/download/v0.18.0/alacritty -o ~/.local/bin/alacritty && chmod +x ~/.local/bin/alacritty && mkdir -p ~/.local/share/applications ~/.config/alacritty && cat > ~/.local/share/applications/alacritty.desktop << 'EOF'
+curl -fsSL https://github.com/MayBurke11/alacritty/releases/download/v0.18.2/alacritty -o ~/.local/bin/alacritty && chmod +x ~/.local/bin/alacritty && mkdir -p ~/.local/share/applications ~/.config/alacritty && cat > ~/.local/share/applications/alacritty.desktop << 'EOF'
 [Desktop Entry]
 Type=Application
 Name=Alacritty-Kitty
