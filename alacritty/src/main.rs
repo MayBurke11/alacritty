@@ -41,6 +41,7 @@ mod message_bar;
 mod migrate;
 mod pane_tree;
 mod pane_state;
+pub mod pane_manager;
 #[cfg(windows)]
 mod panic;
 #[cfg(unix)]
