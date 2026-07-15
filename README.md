@@ -18,7 +18,27 @@ save/restore, and IPC — built alongside AI (OpenCode).
 - **IPC** — `alacritty msg create-tab/close-tab/list-tabs/select-tab/pin-tab/save-tabs/quickrun`. Unix socket at `$XDG_RUNTIME_DIR`.
 - **CLI Flags** — `--create-config`, `--create-systemd-unit`, `--restore`.
 
-### Quick Start
+### One-Line Install
+
+```bash
+curl -fsSL https://github.com/MayBurke11/alacritty/releases/download/v0.18.0/alacritty -o ~/.local/bin/alacritty && chmod +x ~/.local/bin/alacritty && mkdir -p ~/.local/share/applications ~/.config/alacritty && cat > ~/.local/share/applications/alacritty.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Alacritty-Kitty
+Comment=GPU terminal with tabs, tiling, modal menu
+Icon=utilities-terminal
+Exec=alacritty
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true
+StartupWMClass=Alacritty
+EOF
+~/.local/bin/alacritty --create-config > ~/.config/alacritty/alacritty.toml && echo 'Done! Run: alacritty'
+```
+
+Downloads the release binary, installs a desktop entry, and generates a default config.
+
+### Quick Start (Build from Source)
 
 ```bash
 cargo build --release
