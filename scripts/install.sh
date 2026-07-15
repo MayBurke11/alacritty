@@ -119,6 +119,26 @@ action = "save-session"
 [[menu.items.submenu]]
 label = "LOAD"
 list = "sessions"
+
+[[keyboard.bindings]]
+key = "ArrowRight"
+mods = "Alt"
+action = "FocusRight"
+
+[[keyboard.bindings]]
+key = "ArrowLeft"
+mods = "Alt"
+action = "FocusLeft"
+
+[[keyboard.bindings]]
+key = "ArrowUp"
+mods = "Alt"
+action = "FocusUp"
+
+[[keyboard.bindings]]
+key = "ArrowDown"
+mods = "Alt"
+action = "FocusDown"
 TOML
   green "  ✓ ${CONF_DIR}/alacritty.toml"
 else

@@ -202,7 +202,24 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
             "action = \"save-session\"\n",
             "[[menu.items.submenu]]\n",
             "label = \"LOAD\"\n",
-            "list = \"sessions\"\n"
+            "list = \"sessions\"\n\n",
+            "# Alt+arrows for pane focus\n",
+            "[[keyboard.bindings]]\n",
+            "key = \"ArrowRight\"\n",
+            "mods = \"Alt\"\n",
+            "action = \"FocusRight\"\n",
+            "[[keyboard.bindings]]\n",
+            "key = \"ArrowLeft\"\n",
+            "mods = \"Alt\"\n",
+            "action = \"FocusLeft\"\n",
+            "[[keyboard.bindings]]\n",
+            "key = \"ArrowUp\"\n",
+            "mods = \"Alt\"\n",
+            "action = \"FocusUp\"\n",
+            "[[keyboard.bindings]]\n",
+            "key = \"ArrowDown\"\n",
+            "mods = \"Alt\"\n",
+            "action = \"FocusDown\"\n"
         ));
         return Ok(());
     }
