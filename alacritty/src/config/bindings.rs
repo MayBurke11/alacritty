@@ -689,6 +689,7 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
         "w",    ModifiersState::SUPER;                                         Action::Quit;
         // Alt+F4 fallback (when decorations=None, WM can't send close event).
         F4,     ModifiersState::ALT;                                            Action::Quit;
+        "f",    ModifiersState::ALT;                                             Action::ToggleZoom;
         "f",    ModifiersState::SUPER, ~BindingMode::SEARCH;                   Action::SearchForward;
         "b",    ModifiersState::SUPER, ~BindingMode::SEARCH;                   Action::SearchBackward;
         "+" => KeyLocation::Numpad, ModifiersState::SUPER;                     Action::IncreaseFontSize;
