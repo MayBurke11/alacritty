@@ -2,11 +2,11 @@
     <img width="200" alt="Alacritty Logo" src="https://raw.githubusercontent.com/alacritty/alacritty/master/extra/logo/compat/alacritty-term%2Bscanlines.png">
 </p>
 
-<h1 align="center">Alacritty - A fast, cross-platform, OpenGL terminal emulator</h1>
+<h1 align="center">Alacritty-Kitty — GPU terminal with tabs, tiling, modal menu</h1>
 
-## This Fork
+## This Fork — Alacritty-Kitty
 
-Alacritty fork with in-window tabs, modal menu bar, tiling panes, session
+GPU terminal fork — tabs, modal menu, tiling panes, session
 save/restore, and IPC — built alongside AI (OpenCode).
 
 ### Features

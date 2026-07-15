@@ -150,7 +150,7 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
         let exe_path = exe.display();
         println!(concat!(
             "[Unit]\n",
-            "Description=Alacritty terminal emulator (IPC daemon)\n",
+            "Description=Alacritty-Kitty terminal emulator (IPC daemon)\n",
             "Documentation=man:alacritty(1)\n",
             "After=graphical-session.target\n",
             "PartOf=graphical-session.target\n",
@@ -178,8 +178,8 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
         let content = format!(concat!(
             "[Desktop Entry]\n",
             "Type=Application\n",
-            "Name=Alacritty\n",
-            "Comment=GPU-accelerated terminal emulator\n",
+            "Name=Alacritty-Kitty\n",
+            "Comment=GPU-accelerated terminal with tabs, tiling, menu\n",
             "Icon=utilities-terminal\n",
             "Exec={exe_path}\n",
             "Terminal=false\n",
