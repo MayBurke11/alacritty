@@ -166,6 +166,39 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    // Install desktop entry and icons.
+    if options.create_links {
+        let home = std::env::var("HOME").map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| ".".into());
+        let apps_dir = home.join(".local/share/applications");
+        std::fs::create_dir_all(&apps_dir)?;
+        let desktop_path = apps_dir.join("alacritty.desktop");
+        let exe = std::env::current_exe().unwrap_or_else(|_| "alacritty".into());
+        let exe_path = exe.display();
+        let content = format!(concat!(
+            "[Desktop Entry]\n",
+            "Type=Application\n",
+            "Name=Alacritty\n",
+            "Comment=GPU-accelerated terminal emulator\n",
+            "Icon=utilities-terminal\n",
+            "Exec={exe_path}\n",
+            "Terminal=false\n",
+            "Categories=System;TerminalEmulator;\n",
+            "StartupNotify=true\n",
+            "StartupWMClass=Alacritty\n",
+            "Actions=NewWindow;\n",
+            "\n",
+            "[Desktop Action NewWindow]\n",
+            "Name=New Window\n",
+            "Exec={exe_path} msg create-window\n",
+        ), exe_path=exe_path);
+        std::fs::write(&desktop_path, content)?;
+        info!("Installed desktop entry: {}", desktop_path.display());
+        println!("Installed: {}", desktop_path.display());
+        println!("Run 'update-desktop-database ~/.local/share/applications' to refresh menu.");
+        return Ok(());
+    }
+
     // Setup winit event loop.
     let window_event_loop = EventLoop::<Event>::with_user_event().build()?;
 

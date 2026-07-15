@@ -78,6 +78,10 @@ pub struct Options {
     #[clap(long, conflicts_with_all = ["daemon", "restore", "embed", "create_config"])]
     pub create_systemd_unit: bool,
 
+    /// Install desktop entry and icons to user's local applications directory.
+    #[clap(long, conflicts_with_all = ["daemon", "restore", "embed", "create_config", "create_systemd_unit"])]
+    pub create_links: bool,
+
     /// CLI options for config overrides.
     #[clap(skip)]
     pub config_options: ParsedOptions,
