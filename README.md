@@ -6,51 +6,114 @@
 
 ## This Fork
 
-This repository is a fork of Alacritty that adds in-window tabs, including a
-configurable tab bar, tab actions, and custom tab titles, similar to Kitty's
-tab workflow.
+Alacritty fork with in-window tabs, modal menu bar, tiling panes, session
+save/restore, and IPC — built alongside AI (OpenCode).
 
-Upstream Alacritty has historically declined adding tabs by design; see
-[Tabs support in the terminal (#3129)](https://github.com/alacritty/alacritty/issues/3129),
-which is closed with the `F - wontfix` label.
+### Features
 
-<p align="center">
-<img width="1000" alt="alacritty tabs" src="https://github.com/user-attachments/assets/1abb3b24-19a7-417d-a277-98652552d3cf" />
-</p>
+- **Tabs** — `Ctrl+T` create, `Ctrl+W` close, `Ctrl+Tab` switch. Tab bar with 5 styles (Slant, Separator, Fade, Powerline, Hidden). Pin tabs, rename, move, per-tab titles with hysteresis.
+- **Modal Menu Bar** — `Ctrl+G` unlocks, letter-key navigation, nested submenus, list mode (session files). Same rendering mechanism as tab bar via `draw_bar(edge)`.
+- **Tiling Panes (BSP Tree)** — Split right/down, resize (`Ctrl+G, p, r` + `Alt+arrows`), focus (`Alt+arrows`), zoom (`Alt+F`), close (`Ctrl+Shift+#`). Fixup_subtree preserves far-side pixel positions on resize (19/19 tests).
+- **Session Save/Restore** — `Ctrl+G, s, s` saves to `~/.config/alacritty/sessions/`. `--restore` CLI flag. Pane tree + foreground commands preserved.
+- **IPC** — `alacritty msg create-tab/close-tab/list-tabs/select-tab/pin-tab/save-tabs/quickrun`. Unix socket at `$XDG_RUNTIME_DIR`.
+- **CLI Flags** — `--create-config`, `--create-systemd-unit`, `--restore`.
 
-## Example Tabs Config
+### Quick Start
 
-```toml
-[tabs]
-tab_bar_edge = "top"
-tab_bar_style = "slant"
-tab_powerline_style = "slanted"
-tab_bar_min_tabs = 1
-tab_switch_strategy = "previous"
-tab_title_template = "{title}"
-active_tab_foreground = "#1e1e2e"
-active_tab_background = "#cba6f7"
-active_tab_font_style = "italic"
-inactive_tab_foreground = "#cdd6f4"
-inactive_tab_background = "#0b0b12"
-inactive_tab_font_style = "normal"
-tab_bar_background = "#11111b"
-mouse = { enabled = true, hover = true }
+```bash
+cargo build --release
+./target/release/alacritty
 
-[keyboard]
-bindings = [
-  { key = "T", mods = "Super", action = "CreateNewTab" },
-  { key = "Right", mods = "Super", action = "SelectNextTab" },
-  { key = "Left", mods = "Super", action = "SelectPreviousTab" },
-  { key = "Tab", mods = "Super", action = "SelectNextTab" },
-  { key = "Tab", mods = "Super|Shift", action = "SelectPreviousTab" },
-  { key = "W", mods = "Super", action = "CloseTab" },
-  { key = ".", mods = "Super", action = "MoveTabForward" },
-  { key = ",", mods = "Super", action = "MoveTabBackward" },
-  { key = "T", mods = "Super|Alt", action = "SetTabTitle" },
-]
+# Generate default config
+./target/release/alacritty --create-config > ~/.config/alacritty/alacritty.toml
 ```
 
+### Default Key Bindings
+
+| Key | Action |
+|---|---|
+| `Ctrl+G` | Toggle menu bar (LOCKED ↔ ACTIVE) |
+| `Ctrl+T` | Create tab |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next/previous tab |
+| `Alt+←/→/↑/↓` | Focus pane (add to personal config) |
+| `Alt+F` | Toggle pane zoom (add to personal config) |
+| `Ctrl+Shift+#` | Close pane |
+| `Alt+F4` | Quit |
+
+### Menu Flow
+
+```
+Ctrl+G → [ACTIVE] [PAN] [TAB] [SESS]
+  p, s, r → PAN → SPLIT → RIGHT (split right)
+  p, s, d → PAN → SPLIT → DOWN (split down)
+  p, r    → PAN → RESIZE (Alt+arrows resize, Esc exit)
+  p, k    → PAN → KILL (close pane)
+  p, f    → PAN → FULL (zoom toggle)
+  t, c    → TAB → CREATE (new tab)
+  t, k    → TAB → KILL (close tab)
+  s, s    → SESS → SAVE (save session)
+  s, l    → SESS → LOAD (list sessions, Alt+arrows select)
+```
+
+### Example Config
+
+```toml
+[menu]
+menu_bar_edge = "bottom"
+
+[[menu.items]]
+label = "PAN"
+
+[[menu.items.submenu]]
+label = "SPLIT"
+[[menu.items.submenu.submenu]]
+label = "RIGHT"
+action = "split-right"
+[[menu.items.submenu.submenu]]
+label = "DOWN"
+action = "split-down"
+
+[[menu.items.submenu]]
+label = "RESIZE"
+action = "resize-mode"
+
+[[menu.items.submenu]]
+label = "KILL"
+action = "close-pane"
+
+[[menu.items]]
+label = "TAB"
+[[menu.items.submenu]]
+label = "CREATE"
+action = "create-tab"
+[[menu.items.submenu]]
+label = "KILL"
+action = "close-tab"
+
+[[menu.items]]
+label = "SESS"
+[[menu.items.submenu]]
+label = "SAVE"
+action = "save-session"
+[[menu.items.submenu]]
+label = "LOAD"
+list = "sessions"
+
+[tabs]
+tab_bar_edge = "top"
+tab_bar_style = "Slant"
+tab_bar_min_tabs = 1
+```
+
+### Known Issues
+
+- Menu bar `top` edge may not render correctly. Use `menu_bar_edge = "bottom"` as workaround.
+- `Ctrl+W` default binding conflicts with bash/readline (delete word). Rebind or use menu `Ctrl+G, t, k`.
+- `Alt+arrows` focus bindings disabled by default — add to personal config.
+- See `docs/known-bugs.md` for more.
+
+## Original Alacritty README
 ## About
 
 Alacritty is a modern terminal emulator that comes with sensible defaults, but
