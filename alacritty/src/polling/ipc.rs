@@ -387,7 +387,7 @@ pub fn socket_prefix() -> String {
 }
 
 /// Start a TCP listener for remote IPC (localhost by default).
-pub fn start_tcp_listener(addr: &str, proxy: EventLoopProxy<Event>) -> IoResult<()> {
+pub fn start_tcp_listener(addr: &str, token: Option<String>, proxy: EventLoopProxy<Event>) -> IoResult<()> {
     let listener = TcpListener::bind(addr)?;
     log::info!("TCP IPC listening on {addr}");
     std::thread::spawn(move || {
@@ -397,13 +397,26 @@ pub fn start_tcp_listener(addr: &str, proxy: EventLoopProxy<Event>) -> IoResult<
             if reader.read_line(&mut line).is_err() {
                 continue;
             }
-            match serde_json::from_str::<crate::action::Action>(&line) {
-                Ok(action) => {
-                    let _ = proxy.send_event(Event::new(EventType::IpcAction(action), None));
-                },
-                Err(err) => {
-                    warn!("TCP: failed to parse Action: {err}");
-                },
+            // Auth check if token is required.
+            if let Some(ref req_token) = token {
+                if line.trim() != req_token.as_str() {
+                    warn!("TCP: auth failed (bad token)");
+                    continue;
+                }
+                line.clear();
+                if reader.read_line(&mut line).is_err() {
+                    continue;
+                }
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() { continue; }
+            // Try IpcRequest first, then bare Action.
+            if let Ok(req) = serde_json::from_str::<IpcRequest>(trimmed) {
+                let _ = proxy.send_event(Event::new(EventType::IpcAction(req.action), None));
+            } else if let Ok(action) = serde_json::from_str::<crate::action::Action>(trimmed) {
+                let _ = proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            } else {
+                warn!("TCP: failed to parse: {trimmed}");
             }
         }
     });

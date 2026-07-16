@@ -59,6 +59,11 @@ pub struct Options {
     #[clap(long)]
     pub tcp_addr: Option<String>,
 
+    /// TCP auth token (required when --tcp-addr is set).
+    #[cfg(unix)]
+    #[clap(long, requires = "tcp_addr")]
+    pub token: Option<String>,
+
     /// Reduces the level of verbosity (the min level is -qq).
     #[clap(short, conflicts_with("verbose"), action = ArgAction::Count)]
     quiet: u8,
