@@ -309,6 +309,18 @@ pub enum SocketMessage {
 
     /// QuickRun: inline command runner for new tab.
     QuickRun(TabQuickRun),
+
+    /// Execute a raw Action JSON (unified IPC format).
+    Exec(ExecAction),
+}
+
+/// Raw Action JSON payload.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct ExecAction {
+    /// JSON string in Action format: '{"action":"create_tab","command":["htop"]}'
+    #[clap(allow_hyphen_values = true)]
+    pub json: String,
 }
 
 /// Options for creating a tab via IPC.

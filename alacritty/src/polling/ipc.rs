@@ -123,6 +123,17 @@ impl IpcListener {
                 let event = Event::new(EventType::QuickRunIPC(options), None);
                 let _ = self.event_proxy.send_event(event);
             },
+            SocketMessage::Exec(exec) => {
+                match serde_json::from_str::<crate::action::Action>(&exec.json) {
+                    Ok(action) => {
+                        let event = Event::new(EventType::IpcAction(action), None);
+                        let _ = self.event_proxy.send_event(event);
+                    },
+                    Err(err) => {
+                        warn!("Failed to parse Action JSON: {err}");
+                    },
+                }
+            },
         }
 
         Ok(())
@@ -133,9 +144,17 @@ impl IpcListener {
 pub fn send_message(socket: Option<PathBuf>, message: SocketMessage) -> IoResult<()> {
     let mut socket = find_socket(socket)?;
 
-    // Write message to socket.
-    let message_json = serde_json::to_string(&message)?;
-    socket.write_all(message_json.as_bytes())?;
+    // For Exec, send raw JSON string directly.
+    if let SocketMessage::Exec(ref exec) = message {
+        let mut json = exec.json.clone();
+        if !json.ends_with('\n') {
+            json.push('\n');
+        }
+        socket.write_all(json.as_bytes())?;
+    } else {
+        let message_json = serde_json::to_string(&message)?;
+        socket.write_all(message_json.as_bytes())?;
+    }
     let _ = socket.flush();
 
     // Shutdown write end, to allow reading.
