@@ -2,7 +2,7 @@
 # e2e-ipc-quick-test.sh — basic IPC smoke test
 set -euo pipefail
 
-BIN="${ALACRITTY:-~/.local/bin/alacritty}"
+BIN="${ALACRITTY:-alacritty}"
 PASS=0; FAIL=0
 
 assert() { if [ "$2" = "$3" ]; then echo "  PASS: $1"; PASS=$((PASS+1)); else echo "  FAIL: $1 (expected=$2 got=$3)"; FAIL=$((FAIL+1)); fi; }
