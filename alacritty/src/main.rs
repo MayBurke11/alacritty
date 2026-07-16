@@ -139,8 +139,11 @@ fn default_config_string() -> String {
     "\
 # Alacritty-Kitty Configuration
 # Auto-generated on first run.
+# Theme: ~/.config/alacritty/themes/dark.toml
+# Menu:  ~/.config/alacritty/menu.toml
 
 [general]
+import = [\"~/.config/alacritty/themes/dark.toml\", \"~/.config/alacritty/menu.toml\"]
 live_config_reload = true
 ipc_socket = true
 
@@ -158,41 +161,6 @@ size = 11
 [terminal]
 shell = { program = \"/usr/bin/zsh\", args = [\"-l\"] }
 
-[colors]
-draw_bold_text_with_bright_colors = false
-
-[colors.primary]
-background = \"#1c1e26\"
-foreground = \"#c0caf5\"
-
-[colors.normal]
-black   = \"#1c1e26\"
-red     = \"#e9436d\"
-green   = \"#09f7a0\"
-yellow  = \"#fabd2f\"
-blue    = \"#6c6f93\"
-magenta = \"#b877db\"
-cyan    = \"#25b0bc\"
-white   = \"#c0caf5\"
-
-[colors.bright]
-black   = \"#54546d\"
-red     = \"#e9436d\"
-green   = \"#09f7a0\"
-yellow  = \"#fabd2f\"
-blue    = \"#6c6f93\"
-magenta = \"#b877db\"
-cyan    = \"#25b0bc\"
-white   = \"#c0caf5\"
-
-[colors.cursor]
-text   = \"#1c1e26\"
-cursor = \"#c0caf5\"
-
-[colors.selection]
-text       = \"#1c1e26\"
-background = \"#c0caf5\"
-
 [tabs]
 tab_bar_edge = \"top\"
 tab_bar_style = \"Slant\"
@@ -201,6 +169,34 @@ tab_bell_indicator = \"! {title}\"
 
 [tabs.mouse]
 enabled = true
+
+# Alt+arrows for pane focus
+[[keyboard.bindings]]
+key = \"ArrowRight\"
+mods = \"Alt\"
+action = \"FocusRight\"
+
+[[keyboard.bindings]]
+key = \"ArrowLeft\"
+mods = \"Alt\"
+action = \"FocusLeft\"
+
+[[keyboard.bindings]]
+key = \"ArrowUp\"
+mods = \"Alt\"
+action = \"FocusUp\"
+
+[[keyboard.bindings]]
+key = \"ArrowDown\"
+mods = \"Alt\"
+action = \"FocusDown\"
+".to_string()
+}
+
+fn default_menu_string() -> String {
+    "\
+# Alacritty-Kitty Menu
+# Auto-generated on first run.
 
 [menu]
 menu_bar_edge = \"bottom\"
@@ -251,34 +247,66 @@ action = \"save-session\"
 [[menu.items.submenu]]
 label = \"LOAD\"
 list = \"sessions\"
+".to_string()
+}
 
-# Alt+arrows for pane focus
-[[keyboard.bindings]]
-key = \"ArrowRight\"
-mods = \"Alt\"
-action = \"FocusRight\"
+fn default_theme_string() -> String {
+    "\
+# Alacritty-Kitty Dark Theme
+# Auto-generated on first run.
 
-[[keyboard.bindings]]
-key = \"ArrowLeft\"
-mods = \"Alt\"
-action = \"FocusLeft\"
+[colors]
+draw_bold_text_with_bright_colors = false
 
-[[keyboard.bindings]]
-key = \"ArrowUp\"
-mods = \"Alt\"
-action = \"FocusUp\"
+[colors.primary]
+background = \"#1c1e26\"
+foreground = \"#c0caf5\"
 
-[[keyboard.bindings]]
-key = \"ArrowDown\"
-mods = \"Alt\"
-action = \"FocusDown\"
+[colors.normal]
+black   = \"#1c1e26\"
+red     = \"#e9436d\"
+green   = \"#09f7a0\"
+yellow  = \"#fabd2f\"
+blue    = \"#6c6f93\"
+magenta = \"#b877db\"
+cyan    = \"#25b0bc\"
+white   = \"#c0caf5\"
+
+[colors.bright]
+black   = \"#54546d\"
+red     = \"#e9436d\"
+green   = \"#09f7a0\"
+yellow  = \"#fabd2f\"
+blue    = \"#6c6f93\"
+magenta = \"#b877db\"
+cyan    = \"#25b0bc\"
+white   = \"#c0caf5\"
+
+[colors.cursor]
+text   = \"#1c1e26\"
+cursor = \"#c0caf5\"
+
+[colors.selection]
+text       = \"#1c1e26\"
+background = \"#c0caf5\"
 ".to_string()
 }
 
 fn create_default_config_inner(conf_dir: &PathBuf) -> Result<(), Box<dyn Error>> {
     let path = conf_dir.join("alacritty.toml");
     std::fs::write(&path, default_config_string())?;
-    eprintln!("alacritty: created default config at {}", path.display());
+    eprintln!("alacritty: created config at {}", path.display());
+
+    let themes_dir = conf_dir.join("themes");
+    std::fs::create_dir_all(&themes_dir)?;
+    let theme_path = themes_dir.join("dark.toml");
+    std::fs::write(&theme_path, default_theme_string())?;
+    eprintln!("alacritty: created theme at {}", theme_path.display());
+
+    let menu_path = conf_dir.join("menu.toml");
+    std::fs::write(&menu_path, default_menu_string())?;
+    eprintln!("alacritty: created menu at {}", menu_path.display());
+
     Ok(())
 }
 
