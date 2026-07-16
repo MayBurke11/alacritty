@@ -487,22 +487,6 @@ pub struct IpcResponse {
     pub error: Option<String>,
 }
 
-/// Format tab list JSON as ASCII tree.
-fn format_tab_list_ascii(data: &serde_json::Value) -> String {
-    let mut out = String::from("TABS:\n");
-    if let Some(tabs) = data.as_array() {
-        for (i, t) in tabs.iter().enumerate() {
-            let prefix = if i + 1 < tabs.len() { "├──" } else { "└──" };
-            let active = if t["active"].as_bool().unwrap_or(false) { " [active]" } else { "" };
-            let pinned = if t["pinned"].as_bool().unwrap_or(false) { " [pinned]" } else { "" };
-            out.push_str(&format!("{} {}: {}{}{}\n",
-                prefix, t["index"], t["title"].as_str().unwrap_or("?"),
-                active, pinned));
-        }
-    }
-    out
-}
-
 /// Format tree JSON as ASCII art.
 fn format_tree_ascii(data: &serde_json::Value) -> String {
     let mut out = String::new();

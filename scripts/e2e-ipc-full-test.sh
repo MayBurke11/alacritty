@@ -227,6 +227,20 @@ RESULT=$(echo '{"action":"list_tabs"}' | nc -w 1 127.0.0.1 29090 2>/dev/null | h
 [ -n "$RESULT" ] && TCP_OK="ok" || TCP_OK="fail"
 assert "TCP: list_tabs" "ok" "$TCP_OK"
 
+# ===== TREE TESTS =====
+echo ""
+echo "=== TREE tests ==="
+
+# 26. tree ASCII
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tree 2>&1)
+HAS_PANE=$(echo "$OUT" | grep -c "PANE" || true)
+assert "tree: has PANE entries" "ok" "$([ "$HAS_PANE" -ge 1 ] && echo ok || echo "no panes")"
+
+# 27. tree --format json
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tree --format json 2>&1)
+HAS_WINDOWS=$(echo "$OUT" | python3 -c "import sys,json;d=json.load(sys.stdin);print('ok' if 'windows' in d else 'fail')" 2>/dev/null || echo "fail")
+assert "tree --format json: has windows" "ok" "$HAS_WINDOWS"
+
 # ===== CLEANUP =====
 echo ""
 kill "$ALACRITTY_PID" 2>/dev/null || true
