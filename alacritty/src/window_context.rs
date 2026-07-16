@@ -57,34 +57,6 @@ use crate::scheduler::Scheduler;
 use crate::{input, renderer};
 
 #[cfg(not(windows))]
-fn foreground_process_name(master_fd: RawFd, shell_pid: u32) -> Option<String> {
-    let mut pid = unsafe { libc::tcgetpgrp(master_fd) };
-    if pid < 0 {
-        pid = shell_pid as i32;
-    }
-
-    let process_name = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
-    let process_name = process_name.trim();
-    (!process_name.is_empty()).then(|| process_name.to_owned())
-}
-
-#[cfg(not(windows))]
-fn foreground_process_cmdline(master_fd: RawFd, shell_pid: u32) -> Option<Vec<String>> {
-    let mut pid = unsafe { libc::tcgetpgrp(master_fd) };
-    if pid < 0 {
-        pid = shell_pid as i32;
-    }
-    let data = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-    if data.is_empty() { return None; }
-    let args: Vec<String> = data.split(|&b| b == 0)
-        .filter_map(|chunk| std::str::from_utf8(chunk).ok())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_owned())
-        .collect();
-    if args.is_empty() { None } else { Some(args) }
-}
-
-#[cfg(not(windows))]
 fn process_cwd(pid: u32) -> Option<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
@@ -168,8 +140,7 @@ impl WindowContext {
             tab_id: tab.id,
             value: tab.custom_title.clone().unwrap_or_default(),
         });
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn confirm_tab_title_editor(&mut self) {
@@ -185,21 +156,18 @@ impl WindowContext {
         if index == self.active_tab {
             self.refresh_window_title();
         }
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn cancel_tab_title_editor(&mut self) {
         if self.tab_title_editor.take().is_some() {
-            self.display.pending_update.dirty = true;
-            self.dirty = true;
+            self.mark_dirty();
         }
     }
 
     fn start_run_editor(&mut self) {
         self.run_editor = Some(String::new());
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn confirm_run_editor(&mut self, no_switch: bool) {
@@ -209,14 +177,12 @@ impl WindowContext {
             let args: Vec<String> = cmd.split_whitespace().map(|s| s.to_owned()).collect();
             let _ = self.create_tab_inner(Some(args), None, no_switch, None);
         }
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn cancel_run_editor(&mut self) {
         if self.run_editor.take().is_some() {
-            self.display.pending_update.dirty = true;
-            self.dirty = true;
+            self.mark_dirty();
         }
     }
 
@@ -257,8 +223,7 @@ impl WindowContext {
         }
 
         self.window_close_confirmation_pending = true;
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn cancel_window_close_confirmation(&mut self) {
@@ -271,8 +236,7 @@ impl WindowContext {
             tab.message_buffer.remove_target(WINDOW_CLOSE_CONFIRMATION_TARGET);
         }
 
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn confirm_window_close(&mut self) {
@@ -309,8 +273,7 @@ impl WindowContext {
             _ => return,
         }
 
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn tab_title_pop_word(&mut self) {
@@ -320,8 +283,7 @@ impl WindowContext {
 
         editor.value = editor.value.trim_end().to_owned();
         editor.value.truncate(editor.value.rfind(' ').map_or(0, |index| index + 1));
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn render_tab_title(&self, index: usize, tab: &TerminalTab, active: bool) -> String {
@@ -340,6 +302,10 @@ impl WindowContext {
             title = self.config.tabs.tab_bell_indicator.replace("{title}", &title);
         }
         if tab.pinned { format!("*{}", title) } else { title }
+    }
+
+    fn mark_dirty(&mut self) {
+        self.mark_dirty();
     }
 
     fn sync_focus(&mut self) {
@@ -660,8 +626,7 @@ impl WindowContext {
         self.refresh_window_title();
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn create_tab(&mut self) -> Result<(), Box<dyn Error>> {
@@ -778,8 +743,7 @@ impl WindowContext {
         }
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
 
         Ok(())
     }
@@ -968,11 +932,11 @@ impl WindowContext {
             let cwd = std::fs::read_link(format!("/proc/{}/cwd", tab.shell_pid)).ok()
                 .map(|p| p.to_string_lossy().to_string());
             let additional: Vec<SavedPane> = tab.panes.additional.iter().map(|(id, pane)| {
-                let cmd = foreground_process_cmdline(pane.master_fd, pane.shell_pid);
+                let cmd = crate::util::foreground_process_cmdline(pane.master_fd, pane.shell_pid);
                 SavedPane { pane_id: id.0, command: cmd }
             }).collect();
             SavedTab {
-                command: foreground_process_cmdline(tab.master_fd, tab.shell_pid)
+                command: crate::util::foreground_process_cmdline(tab.master_fd, tab.shell_pid)
                     .or_else(|| tab.command.clone()),
                 cwd,
                 pinned: tab.pinned,
@@ -1076,8 +1040,7 @@ impl WindowContext {
         // Full redraw after pane restoration to avoid damage tracker OOB.
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
         Ok(())
     }
 
@@ -1175,8 +1138,7 @@ impl WindowContext {
         self.refresh_window_title();
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
 
         false
     }
@@ -2138,8 +2100,7 @@ impl WindowContext {
         tab.panes.active = new_pane_id;
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId, command: Option<Vec<String>>) -> Result<PaneState, Box<dyn Error>> {
@@ -2199,8 +2160,7 @@ impl WindowContext {
         }
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn focus_pane(&mut self, direction: FocusDir) {
@@ -2238,8 +2198,7 @@ impl WindowContext {
         let new_active = if let Some((id, _)) = best { id } else { leaves[(leaves.iter().position(|&i| i == active).unwrap_or(0) + 1) % leaves.len()] };
         self.active_tab_mut().panes.active = new_active;
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     fn toggle_zoom(&mut self) {
@@ -2295,8 +2254,7 @@ impl WindowContext {
         }
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
-        self.display.pending_update.dirty = true;
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     pub fn handle_pane_exit(&mut self, tab_id: Option<TabId>, pane_id: Option<PaneId>) -> bool {
@@ -2336,8 +2294,7 @@ impl WindowContext {
                         }
                     }
                     self.display.damage_tracker.next_frame().mark_fully_damaged();
-                    self.display.pending_update.dirty = true;
-                    self.dirty = true;
+                    self.mark_dirty();
                     return false;
                 }
             }

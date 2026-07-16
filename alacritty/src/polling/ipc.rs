@@ -47,6 +47,12 @@ impl IpcListener {
         Ok(Self { event_proxy, socket, data: Default::default() })
     }
 
+    fn send_event(&self, event: Event) {
+        if let Err(err) = self.event_proxy.send_event(event) {
+            log::warn!("Failed to send IPC event: {err:?}");
+        }
+    }
+
     /// Process the next IPC message.
     pub fn process_message(&mut self) -> Result<(), IoError> {
         let (stream, _) = self.socket.accept()?;
@@ -65,7 +71,7 @@ impl IpcListener {
                 // Fallback: try unified IpcRequest format.
                 if let Ok(req) = serde_json::from_str::<IpcRequest>(&self.data) {
                     let event = Event::new(EventType::IpcAction(req.action), None);
-                    let _ = self.event_proxy.send_event(event);
+                    self.send_event(event);
                     // Send reply if id present.
                     if let Some(id) = req.id {
                         let resp = IpcResponse { id: Some(id), ok: true, data: None, error: None };
@@ -79,7 +85,7 @@ impl IpcListener {
                 match serde_json::from_str::<crate::action::Action>(&self.data) {
                     Ok(action) => {
                         let event = Event::new(EventType::IpcAction(action), None);
-                        let _ = self.event_proxy.send_event(event);
+                        self.send_event(event);
                         return Ok(());
                     },
                     Err(err) => {
@@ -107,12 +113,12 @@ impl IpcListener {
                     TA::Pin { index, .. } => A::TogglePin { index: index.saturating_sub(1) },
                     TA::List { .. } => {
                         let event = Event::new(EventType::ListTabsIPC(Arc::new(stream), None), None);
-                        let _ = self.event_proxy.send_event(event);
+                        self.send_event(event);
                         return Ok(());
                     },
                     TA::Save { .. } => {
                         let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream), None), None);
-                        let _ = self.event_proxy.send_event(event);
+                        self.send_event(event);
                         return Ok(());
                     },
                     TA::Move { index, delta } => A::MoveTab { index: index.saturating_sub(1), delta: *delta },
@@ -122,7 +128,7 @@ impl IpcListener {
                     TA::Last => A::SelectLastTab,
                     TA::Focus => A::ToggleMenu, // opens menu list mode
                 };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Pane(cmd) => {
                 use crate::action::{Action as A, FocusDir, SplitDir};
@@ -144,7 +150,7 @@ impl IpcListener {
                         grow: ra == "grow",
                     },
                 };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Window(cmd) => {
                 use crate::action::Action as A;
@@ -157,7 +163,7 @@ impl IpcListener {
                     },
                     WA::Close => A::CloseWindow,
                 };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Session(cmd) => {
                 use crate::action::Action as A;
@@ -167,7 +173,7 @@ impl IpcListener {
                     SA::Load { name } => A::LoadSession { name: name.clone() },
                     SA::List => A::ListSessions,
                 };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Config(cmd) => {
                 use crate::action::Action as A;
@@ -175,7 +181,7 @@ impl IpcListener {
                 let action = match &cmd.action {
                     CA::Get => {
                         let event = Event::new(EventType::IpcGetConfig(Arc::new(stream)), None);
-                        let _ = self.event_proxy.send_event(event);
+                        self.send_event(event);
                         return Ok(());
                     },
                     CA::Set { options, reset } => {
@@ -191,7 +197,7 @@ impl IpcListener {
                     CA::Reset => A::SetConfig { options: Default::default(), reset: true },
                 };
                 if !matches!(&cmd.action, CA::Get) {
-                    let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                    self.send_event(Event::new(EventType::IpcAction(action), None));
                 }
             },
             SocketMessage::QuickRun(opts) => {
@@ -199,26 +205,26 @@ impl IpcListener {
                     command: opts.command.clone(),
                     no_switch: opts.no_switch,
                 };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Scroll(cmd) => {
                 let action = crate::action::Action::Scroll { lines: cmd.lines };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                self.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Bell => {
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(crate::action::Action::Bell), None));
+                self.send_event(Event::new(EventType::IpcAction(crate::action::Action::Bell), None));
             },
             SocketMessage::Exec(exec) => {
                 match serde_json::from_str::<crate::action::Action>(&exec.json) {
                     Ok(action) => {
-                        let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                        self.send_event(Event::new(EventType::IpcAction(action), None));
                     },
                     Err(err) => warn!("Failed to parse Action JSON: {err}"),
                 }
             },
             SocketMessage::Tree(_cmd) => {
                 let event = Event::new(EventType::TreeIPC(Arc::new(stream)), None);
-                let _ = self.event_proxy.send_event(event);
+                self.send_event(event);
                 return Ok(());
             },
         }
