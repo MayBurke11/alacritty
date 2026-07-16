@@ -465,4 +465,4 @@ pub fn start_tcp_listener(addr: &str, token: Option<String>, proxy: EventLoopPro
 }
 
 // Re-export IPC types for backward compatibility.
-pub use crate::ipc_types::{format_tree_ascii, IpcRequest, IpcResponse, SocketReply};
+pub use crate::ipc::{format_tree_ascii, IpcRequest, IpcResponse, SocketReply};

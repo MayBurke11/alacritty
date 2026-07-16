@@ -1,5 +1,7 @@
 //! IPC types and utilities.
 
+pub mod mcp;
+
 use serde::{Deserialize, Serialize};
 
 /// JSON-RPC-light request wrapper.

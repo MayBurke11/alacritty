@@ -35,7 +35,7 @@ mod daemon;
 mod display;
 mod event;
 mod input;
-mod ipc_types;
+mod ipc;
 mod logging;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -70,7 +70,7 @@ use crate::event::{Event, Processor};
 #[cfg(target_os = "macos")]
 use crate::macos::locale;
 #[cfg(unix)]
-use crate::polling::{IoListener, ipc};
+use crate::polling::{IoListener, ipc as polling_ipc};
 
 fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(windows)]
@@ -90,6 +90,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     match options.subcommands {
         #[cfg(unix)]
         Some(Subcommands::Msg(options)) => msg(options)?,
+        #[cfg(unix)]
+        Some(Subcommands::Mcp) => crate::ipc::mcp::run()?,
         Some(Subcommands::Migrate(options)) => migrate::migrate(options),
         None => alacritty(options)?,
     }
@@ -107,7 +109,7 @@ fn msg(mut options: MessageOptions) -> Result<(), Box<dyn Error>> {
             // No activation token needed in unified format
         }
     }
-    ipc::send_message(options.socket, options.message).map_err(|err| err.into())
+    polling_ipc::send_message(options.socket, options.message).map_err(|err| err.into())
 }
 
 /// Temporary files stored for Alacritty.
@@ -474,7 +476,7 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
     // Start TCP listener if --tcp-addr is set.
     #[cfg(unix)]
     if let Some(ref tcp_addr) = options.tcp_addr {
-        if let Err(err) = ipc::start_tcp_listener(tcp_addr, options.token.clone(), window_event_loop.create_proxy()) {
+        if let Err(err) = polling_ipc::start_tcp_listener(tcp_addr, options.token.clone(), window_event_loop.create_proxy()) {
             log::warn!("Unable to start TCP listener on {tcp_addr}: {err}");
         }
     }

@@ -265,6 +265,9 @@ impl WindowIdentity {
 pub enum Subcommands {
     #[cfg(unix)]
     Msg(MessageOptions),
+    /// Start MCP server over stdio (for LLM integration).
+    #[cfg(unix)]
+    Mcp,
     Migrate(MigrateOptions),
 }
 
