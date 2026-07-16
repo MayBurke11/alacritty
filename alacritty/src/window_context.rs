@@ -616,6 +616,9 @@ impl WindowContext {
                 self.dirty = true;
                 ActionResult::success()
             },
+            crate::action::Action::Tree => {
+                ActionResult::data(self.build_tree_json())
+            },
             crate::action::Action::SearchForward => {
                 let tab = self.active_tab_mut();
                 tab.search_state.direction = alacritty_terminal::index::Direction::Right;
@@ -2340,6 +2343,85 @@ impl WindowContext {
             }
         }
         self.handle_tab_exit(tab_id)
+    }
+
+    pub fn build_tree_json(&self) -> serde_json::Value {
+        let window_id = format!("{:?}", self.display.window.id());
+        serde_json::json!({
+            "app": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "pid": std::process::id(),
+            },
+            "windows": [{
+                "index": 1,
+                "id": window_id,
+                "config": serde_json::to_value(&*self.config).unwrap_or_default(),
+                "tabs": self.tabs.iter().enumerate().map(|(i, tab)| {
+                    let config = serde_json::to_value(&*tab.config).unwrap_or_default();
+                    let panes: Vec<serde_json::Value> = {
+                        let mut v = Vec::new();
+                        v.push(serde_json::json!({
+                            "id": 0,
+                            "active": tab.panes.active == PaneId(0),
+                            "zoomed": tab.panes.zoomed == Some(PaneId(0)),
+                            "process": self.pane_process_info(tab, PaneId(0)),
+                        }));
+                        for (pane_id, _pane) in &tab.panes.additional {
+                            v.push(serde_json::json!({
+                                "id": pane_id.0,
+                                "active": tab.panes.active == *pane_id,
+                                "zoomed": tab.panes.zoomed == Some(*pane_id),
+                                "process": self.pane_process_info(tab, *pane_id),
+                            }));
+                        }
+                        v
+                    };
+                    let cwd_val = {
+                        #[cfg(not(windows))]
+                        let c = crate::daemon::foreground_process_path(tab.master_fd, tab.shell_pid)
+                            .ok().map(|p| p.display().to_string());
+                        #[cfg(windows)]
+                        let c: Option<String> = None;
+                        c
+                    };
+                    serde_json::json!({
+                        "index": i + 1,
+                        "id": tab.id.0,
+                        "title": tab.display_title(),
+                        "active": i == self.active_tab,
+                        "pinned": tab.pinned,
+                        "cwd": cwd_val,
+                        "config": config,
+                        "panes": panes,
+                    })
+                }).collect::<Vec<_>>(),
+            }],
+        })
+    }
+
+    fn pane_process_info(&self, tab: &TerminalTab, pane_id: PaneId) -> serde_json::Value {
+        #[cfg(not(windows))]
+        {
+            let (fd, pid) = if pane_id == PaneId(0) {
+                (tab.master_fd, tab.shell_pid)
+            } else if let Some(pane) = tab.panes.additional.get(&pane_id) {
+                (pane.master_fd, pane.shell_pid)
+            } else {
+                return serde_json::json!({"pid": 0, "command": "?"});
+            };
+            let cmd = crate::util::foreground_process_name(fd, pid);
+            let cwd = crate::daemon::foreground_process_path(fd, pid).ok()
+                .map(|p| p.display().to_string());
+            serde_json::json!({
+                "pid": pid,
+                "command": cmd.unwrap_or_else(|| "?".into()),
+                "cwd": cwd,
+            })
+        }
+        #[cfg(windows)]
+        {
+            serde_json::json!({"pid": 0, "command": "?"})
+        }
     }
 
 }

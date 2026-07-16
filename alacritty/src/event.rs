@@ -309,6 +309,25 @@ impl ApplicationHandler<Event> for Processor {
         match (payload, window_id) {
             // Process IPC config update.
             #[cfg(unix)]
+            (EventType::TreeIPC(stream), _) => {
+                if let Some((_, window_context)) = self.windows.iter().next() {
+                    let tree = window_context.build_tree_json();
+                    let reply = serde_json::json!({"ok": true, "data": tree});
+                    let stream_clone = stream.clone();
+                    if let Ok(s) = Arc::try_unwrap(stream) {
+                        let mut s = s;
+                        let mut json = serde_json::to_string(&reply).unwrap_or_default();
+                        json.push('\n');
+                        let _ = std::io::Write::write_all(&mut s, json.as_bytes());
+                    } else if let Ok(mut s) = stream_clone.try_clone() {
+                        let mut json = serde_json::to_string(&reply).unwrap_or_default();
+                        json.push('\n');
+                        let _ = std::io::Write::write_all(&mut s, json.as_bytes());
+                    }
+                }
+            },
+            // Process IPC config update.
+            #[cfg(unix)]
             (EventType::IpcConfig(ipc_config), window_id) => {
                 // Try and parse options as toml.
                 let mut options = ParsedOptions::from_options(&ipc_config.options);
@@ -675,6 +694,8 @@ pub enum EventType {
     /// Unified action dispatch (IPC-first).
     #[cfg(unix)]
     IpcAction(crate::action::Action),
+    #[cfg(unix)]
+    TreeIPC(Arc<UnixStream>),
     #[cfg(unix)]
     IpcConfig(IpcConfig),
     #[cfg(unix)]
@@ -2706,10 +2727,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                     TerminalEvent::Exit | TerminalEvent::ChildExit(_) | TerminalEvent::Wakeup => (),
                 },
                 #[cfg(unix)]
-                EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::IpcAction(_) | EventType::Shutdown => (),
+                EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::IpcAction(_) | EventType::TreeIPC(_) | EventType::Shutdown => (),
                 EventType::Tab(_) => (),
                 #[cfg(unix)]
-                EventType::IpcAction(_) => (),
+                EventType::IpcAction(_) | EventType::TreeIPC(_) => (),
                 EventType::CreateTabIPC(_)
                 | EventType::ListTabsIPC(..)
                 | EventType::SelectTabIPC(..)

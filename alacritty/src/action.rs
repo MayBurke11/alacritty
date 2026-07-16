@@ -77,6 +77,7 @@ pub enum Action {
     SearchForward,
     SearchBackward,
     SearchNext,
+    Tree,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]

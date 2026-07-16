@@ -216,6 +216,11 @@ impl IpcListener {
                     Err(err) => warn!("Failed to parse Action JSON: {err}"),
                 }
             },
+            SocketMessage::Tree(_cmd) => {
+                let event = Event::new(EventType::TreeIPC(Arc::new(stream)), None);
+                let _ = self.event_proxy.send_event(event);
+                return Ok(());
+            },
         }
 
         Ok(())
@@ -226,7 +231,38 @@ impl IpcListener {
 pub fn send_message(socket: Option<PathBuf>, message: SocketMessage) -> IoResult<()> {
     let mut socket = find_socket(socket)?;
 
-    // For Exec, send raw JSON string directly.
+    // For Tree, send via SocketMessage::Tree and read TreeIPC reply.
+    if let SocketMessage::Tree(ref cmd) = message {
+        let tree_json = serde_json::to_string(&SocketMessage::Tree(crate::cli::TreeCommand { format: "json".into() }))?;
+        socket.write_all(tree_json.as_bytes())?;
+        let _ = socket.flush();
+        socket.shutdown(Shutdown::Write)?;
+
+        let mut buf = String::new();
+        let mut r = BufReader::new(&socket);
+        if r.read_line(&mut buf).is_ok() {
+            // Try IpcResponse format.
+            if let Ok(resp) = serde_json::from_str::<IpcResponse>(&buf) {
+                if let Some(data) = resp.data {
+                    if cmd.format == "json" {
+                        println!("{data}");
+                    } else {
+                        println!("{}", format_tree_ascii(&data));
+                    }
+                    return Ok(());
+                }
+            }
+            // Fallback: try as plain JSON (tree data directly).
+            if let Ok(tree) = serde_json::from_str::<serde_json::Value>(&buf) {
+                if cmd.format == "json" {
+                    println!("{buf}");
+                } else {
+                    println!("{}", format_tree_ascii(&tree));
+                }
+            }
+        }
+        return Ok(());
+    }
     if let SocketMessage::Exec(ref exec) = message {
         let mut json = exec.json.clone();
         if !json.ends_with('\n') {
@@ -449,4 +485,59 @@ pub struct IpcResponse {
     pub data: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Format tab list JSON as ASCII tree.
+fn format_tab_list_ascii(data: &serde_json::Value) -> String {
+    let mut out = String::from("TABS:\n");
+    if let Some(tabs) = data.as_array() {
+        for (i, t) in tabs.iter().enumerate() {
+            let prefix = if i + 1 < tabs.len() { "├──" } else { "└──" };
+            let active = if t["active"].as_bool().unwrap_or(false) { " [active]" } else { "" };
+            let pinned = if t["pinned"].as_bool().unwrap_or(false) { " [pinned]" } else { "" };
+            out.push_str(&format!("{} {}: {}{}{}\n",
+                prefix, t["index"], t["title"].as_str().unwrap_or("?"),
+                active, pinned));
+        }
+    }
+    out
+}
+
+/// Format tree JSON as ASCII art.
+fn format_tree_ascii(data: &serde_json::Value) -> String {
+    let mut out = String::new();
+    let app = &data["app"];
+    out.push_str(&format!("alacritty-kitty v{} (pid {})\n\n",
+        app["version"].as_str().unwrap_or("?"),
+        app["pid"]));
+
+    if let Some(windows) = data["windows"].as_array() {
+        for w in windows {
+            out.push_str(&format!("WINDOW {} (id {})\n",
+                w["index"], w["id"]));
+            if let Some(tabs) = w["tabs"].as_array() {
+                for (ti, t) in tabs.iter().enumerate() {
+                    let prefix = if ti + 1 < tabs.len() { "├──" } else { "└──" };
+                    let active = if t["active"].as_bool().unwrap_or(false) { " [active]" } else { "" };
+                    let pinned = if t["pinned"].as_bool().unwrap_or(false) { " [pinned]" } else { "" };
+                    let size = t["config"]["font"]["size"].as_f64().map_or(String::new(), |s| format!("  font={}", s));
+                    out.push_str(&format!("{} TAB {}: {}{}{}{}\n",
+                        prefix, t["index"], t["title"].as_str().unwrap_or("?"),
+                        active, pinned, size));
+                    if let Some(panes) = t["panes"].as_array() {
+                        let indent = if ti + 1 < tabs.len() { "│   " } else { "    " };
+                        for (pi, p) in panes.iter().enumerate() {
+                            let pprefix = if pi + 1 < panes.len() { "├──" } else { "└──" };
+                            let proc = &p["process"];
+                            out.push_str(&format!("{}{} PANE {}: {} (pid {})\n",
+                                indent, pprefix, p["id"],
+                                proc["command"].as_str().unwrap_or("?"),
+                                proc["pid"]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }

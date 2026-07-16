@@ -303,6 +303,9 @@ pub enum SocketMessage {
     Bell,
     /// Execute raw Action JSON.
     Exec(ExecAction),
+
+    /// Show process tree with config.
+    Tree(TreeCommand),
 }
 
 // ── Tab ──
@@ -499,6 +502,15 @@ pub struct ExecAction {
     /// JSON string in Action format: '{"action":"create_tab","command":["htop"]}'
     #[clap(allow_hyphen_values = true)]
     pub json: String,
+}
+
+/// Tree view command.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct TreeCommand {
+    /// Output format: json, nuon, tree (default).
+    #[clap(long, default_value = "tree")]
+    pub format: String,
 }
 
 /// Scroll command.
