@@ -305,7 +305,8 @@ impl WindowContext {
     }
 
     fn mark_dirty(&mut self) {
-        self.mark_dirty();
+        self.display.pending_update.dirty = true;
+        self.dirty = true;
     }
 
     fn sync_focus(&mut self) {
