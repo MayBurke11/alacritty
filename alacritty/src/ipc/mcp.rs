@@ -94,10 +94,45 @@ fn handle_tool_call(name: &str, args: &Value) -> Value {
 }
 
 fn send_action(action: &Action) -> io::Result<Option<Value>> {
-    let socket = find_socket()?;
+    let socket_path = find_socket()?;
+    
+    // For data-returning commands, use synchronous SocketMessage format.
+    let msg = match action {
+        Action::ListTabs => json!({"Tab":{"action":{"List":{"window_id":null}}}}),
+        Action::GetConfig => json!({"Config":{"action":"Get"}}),
+        Action::ListSessions => json!({"Session":{"action":"List"}}),
+        Action::Tree => json!({"Tree":{"format":"json"}}),
+        _ => return send_async_action(action, &socket_path),
+    };
+    
+    let mut stream = UnixStream::connect(&socket_path)?;
+    let mut req = serde_json::to_vec(&msg)?;
+    req.push(b'\n');
+    stream.write_all(&req)?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+    let mut buf = String::new();
+    BufReader::new(&stream).read_line(&mut buf)?;
+    // Parse SocketReply or plain JSON response
+    if let Ok(reply) = serde_json::from_str::<crate::ipc::SocketReply>(&buf) {
+        match reply {
+            crate::ipc::SocketReply::ListTabs(tabs) => Ok(Some(serde_json::from_str(&tabs).unwrap_or(Value::Null))),
+            crate::ipc::SocketReply::GetConfig(config) => Ok(Some(serde_json::from_str(&config).unwrap_or(Value::String(config)))),
+            crate::ipc::SocketReply::SaveTabs(data) => Ok(Some(serde_json::from_str(&data).unwrap_or(Value::Null))),
+        }
+    } else {
+        // TreeIPC sends IpcResponse format
+        if let Ok(resp) = serde_json::from_str::<crate::ipc::IpcResponse>(&buf) {
+            Ok(resp.data)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn send_async_action(action: &Action, socket_path: &std::path::Path) -> io::Result<Option<Value>> {
+    let mut stream = UnixStream::connect(socket_path)?;
     let mut req = serde_json::to_vec(&crate::ipc::IpcRequest { id: Some(1), action: action.clone() })?;
     req.push(b'\n');
-    let mut stream = UnixStream::connect(&socket)?;
     stream.write_all(&req)?;
     stream.shutdown(std::net::Shutdown::Write)?;
     let mut buf = String::new();
