@@ -291,6 +291,17 @@ impl ApplicationHandler<Event> for Processor {
 
         let is_redraw = matches!(event, WindowEvent::RedrawRequested);
 
+        // Handle pane click-to-focus before normal event processing.
+        if let WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            button: MouseButton::Left, ..
+        } = &event
+        {
+            let x = window_context.mouse.x as f64;
+            let y = window_context.mouse.y as f64;
+            window_context.click_to_focus_pane(x, y);
+        }
+
         window_context.handle_event(
             #[cfg(target_os = "macos")]
             _event_loop,

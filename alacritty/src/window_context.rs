@@ -96,7 +96,7 @@ pub struct WindowContext {
     window_close_confirmation_pending: bool,
     focused: bool,
     modifiers: Modifiers,
-    mouse: Mouse,
+    pub mouse: Mouse,
     touch: TouchPurpose,
     occluded: bool,
     preserve_title: bool,
@@ -1722,6 +1722,21 @@ impl WindowContext {
                 self.tab_title_editor.as_ref().map(|e| e.value.as_str()),
                 self.run_editor.as_deref(), &self.menu.state, None, true, false,
             );
+        }
+    }
+
+    /// Handle mouse click on a pane — focus it if different from active.
+    pub fn click_to_focus_pane(&mut self, x: f64, y: f64) {
+        let active = self.active_tab().panes.active;
+        let size_info = self.display.size_info;
+        if let Some(pane_id) = self.pane_at_position(self.active_tab(), &size_info, x as f32, y as f32) {
+            if pane_id != active {
+                let tab = self.active_tab_mut();
+                tab.panes.active = pane_id;
+                self.sync_focus();
+                self.display.pending_update.dirty = true;
+                self.dirty = true;
+            }
         }
     }
 
