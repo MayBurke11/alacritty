@@ -2174,7 +2174,8 @@ impl WindowContext {
             tab.panes.additional.insert(new_pane_id, pane_state);
             let _ = event_loop.spawn();  // spawn IO thread AFTER insertion
         }
-         tab.panes.active = new_pane_id;
+        tab.panes.active = new_pane_id;
+        self.sync_focus();
 
         self.display.damage_tracker.frame().mark_fully_damaged();
         self.display.damage_tracker.next_frame().mark_fully_damaged();
