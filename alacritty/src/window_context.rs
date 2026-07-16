@@ -2071,6 +2071,61 @@ impl WindowContext {
         None
     }
 
+    pub fn start_divider_drag(&mut self, x: f32, y: f32) -> bool {
+        let tab = self.active_tab();
+        let size_info = self.display.size_info;
+        let Some(split_id) = self.divider_at_position(tab, &size_info, x, y) else { return false };
+        let Some(direction) = tab.panes.tree.split_direction(split_id) else { return false };
+        let ratio = tab.panes.tree.find_split_ratio(split_id).unwrap_or(0.5);
+        self.divider_drag = Some((self.active_tab, split_id, direction, x, y, ratio));
+        self.mouse.block_hint_launcher = true;
+        true
+    }
+
+    pub fn update_divider_drag(&mut self, x: f32, y: f32) {
+        let Some((tab_idx, split_id, direction, start_x, start_y, start_ratio)) = self.divider_drag else { return };
+        if tab_idx != self.active_tab { return; }
+        let full_size = self.display.size_info;
+        let vw = full_size.width() as f32;
+        let vh = full_size.height() as f32;
+        if vw <= 0.0 || vh <= 0.0 { return; }
+        let tab = self.active_tab_mut();
+        let delta = match direction {
+            SplitDir::Horizontal => (x - start_x) / vw,
+            SplitDir::Vertical => (y - start_y) / vh,
+        };
+        let new_ratio = (start_ratio + delta).clamp(0.1, 0.9);
+        if let Some(r) = tab.panes.tree.find_split_ratio_mut(split_id) {
+            *r = new_ratio;
+        }
+        let full_viewport = crate::pane_tree::Rect::new(0.0, 0.0, vw, vh);
+        let (pane_rects, _) = tab.panes.tree.leaf_rects(full_viewport);
+        let cell_w = full_size.cell_width();
+        let cell_h = full_size.cell_height();
+        let pad_x = full_size.padding_x();
+        let pad_y = full_size.padding_y();
+        for (pane_id, rect) in &pane_rects {
+            let ps = crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, pad_x, pad_y, false);
+            if *pane_id == PaneId(0) {
+                tab.terminal.lock().resize(ps);
+                let _ = tab.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+            } else if let Some(pane) = tab.panes.additional.get_mut(pane_id) {
+                pane.terminal.lock().resize(ps);
+                let _ = pane.notifier.0.send(alacritty_terminal::event_loop::Msg::Resize(ps.into()));
+            }
+        }
+        self.dirty = true;
+    }
+
+    pub fn end_divider_drag(&mut self) {
+        self.divider_drag = None;
+        self.mouse.block_hint_launcher = false;
+    }
+
+    pub fn is_dragging_divider(&self) -> bool {
+        self.divider_drag.is_some()
+    }
+
     fn split_pane(&mut self, direction: SplitDir) {
         log::info!("[panes] split {:?}", direction);
         self.display.cursor_hidden = false;

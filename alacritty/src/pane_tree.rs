@@ -166,6 +166,18 @@ impl PaneNode {
         }
     }
 
+    pub fn find_split_ratio(&self, target: SplitId) -> Option<f32> {
+        match self {
+            PaneNode::Split { split_id, ratio, a, b, .. } => {
+                if *split_id == target {
+                    return Some(*ratio);
+                }
+                a.find_split_ratio(target).or_else(|| b.find_split_ratio(target))
+            },
+            PaneNode::Leaf { .. } => None,
+        }
+    }
+
     /// Adjust the nearest ancestor split ratio in the given direction.
     ///
     /// `grow` = true expands the pane (makes it larger), `grow` = false shrinks it.

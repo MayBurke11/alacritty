@@ -299,7 +299,21 @@ impl ApplicationHandler<Event> for Processor {
         {
             let x = window_context.mouse.x as f64;
             let y = window_context.mouse.y as f64;
-            window_context.click_to_focus_pane(x, y);
+            if !window_context.start_divider_drag(x as f32, y as f32) {
+                window_context.click_to_focus_pane(x, y);
+            }
+        }
+        if let WindowEvent::MouseInput {
+            state: ElementState::Released,
+            button: MouseButton::Left, ..
+        } = &event
+        {
+            window_context.end_divider_drag();
+        }
+        if let WindowEvent::CursorMoved { position, .. } = &event {
+            if window_context.is_dragging_divider() {
+                window_context.update_divider_drag(position.x as f32, position.y as f32);
+            }
         }
 
         window_context.handle_event(
