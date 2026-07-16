@@ -1790,15 +1790,16 @@ impl WindowContext {
                 _ => (),
             }
 
-            let tab_index = match &event {
-                WinitEvent::UserEvent(Event { tab_id, .. }) => {
-                    self.tab_index(*tab_id).unwrap_or(self.active_tab)
+            let (tab_index, event_pane) = match &event {
+                WinitEvent::UserEvent(Event { tab_id, pane_id, .. }) => {
+                    (self.tab_index(*tab_id).unwrap_or(self.active_tab), *pane_id)
                 },
-                _ => self.active_tab,
+                _ => (self.active_tab, None),
             };
             let is_active_tab = tab_index == self.active_tab;
             let tab = &mut self.tabs[tab_index];
-            let active_pid = tab.panes.active;
+            // Use pane_id from event if present (for pane-specific events), else active pane.
+            let active_pid = event_pane.unwrap_or(tab.panes.active);
 
             // Lock the active pane's terminal, get notifier/fd/pid (no unsafe needed).
             let mut terminal;
