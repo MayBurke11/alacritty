@@ -546,16 +546,17 @@ impl WindowContext {
                 ActionResult::success()
             },
             crate::action::Action::Scroll { lines } => {
-                let tab = self.active_tab_mut();
-                let active_pid = tab.panes.active;
-                let terminal = if active_pid == PaneId(0) {
-                    tab.terminal.clone()
-                } else if let Some(pane) = tab.panes.additional.get(&active_pid) {
-                    pane.terminal.clone()
-                } else {
-                    tab.terminal.clone()
+                let terminal = {
+                    let tab = self.active_tab_mut();
+                    let active_pid = tab.panes.active;
+                    if active_pid == PaneId(0) {
+                        tab.terminal.clone()
+                    } else if let Some(pane) = tab.panes.additional.get(&active_pid) {
+                        pane.terminal.clone()
+                    } else {
+                        tab.terminal.clone()
+                    }
                 };
-                drop(tab);
                 terminal.lock().scroll_display(Scroll::Delta(lines));
                 self.dirty = true;
                 ActionResult::success()
