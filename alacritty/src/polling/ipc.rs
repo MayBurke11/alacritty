@@ -79,9 +79,9 @@ impl IpcListener {
 
         // Handle IPC events.
         match message {
-            SocketMessage::CreateWindow(options) => {
-                let event = Event::new(EventType::CreateWindow(options), None);
-                let _ = self.event_proxy.send_event(event);
+            SocketMessage::CreateWindow(_) => {
+                let action = crate::action::Action::NewWindow { command: None, cwd: None, config: None };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Config(ipc_config) => {
                 let window_id =
@@ -96,32 +96,40 @@ impl IpcListener {
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::CreateTab(options) => {
-                let event = Event::new(EventType::CreateTabIPC(options), None);
-                let _ = self.event_proxy.send_event(event);
+                let action = crate::action::Action::CreateTab {
+                    command: if options.command.is_empty() { None } else { Some(options.command.clone()) },
+                    cwd: options.working_directory.map(|p| p.to_string_lossy().to_string()),
+                    config: None,
+                    no_switch: options.no_switch,
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::ListTabs(options) => {
                 let event = Event::new(EventType::ListTabsIPC(Arc::new(stream), options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::SelectTab(options) => {
-                let event = Event::new(EventType::SelectTabIPC(options.index, options.window_id), None);
-                let _ = self.event_proxy.send_event(event);
+                let action = crate::action::Action::SelectTab { index: options.index.saturating_sub(1) };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::CloseTab(options) => {
-                let event = Event::new(EventType::CloseTabIPC(options.index, options.window_id), None);
-                let _ = self.event_proxy.send_event(event);
+                let action = crate::action::Action::CloseTab { index: Some(options.index.saturating_sub(1)) };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::PinTab(options) => {
-                let event = Event::new(EventType::PinTabIPC(options.index, options.window_id), None);
-                let _ = self.event_proxy.send_event(event);
+                let action = crate::action::Action::TogglePin { index: options.index.saturating_sub(1) };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::SaveTabs(options) => {
                 let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream), options.window_id), None);
                 let _ = self.event_proxy.send_event(event);
             },
             SocketMessage::QuickRun(options) => {
-                let event = Event::new(EventType::QuickRunIPC(options), None);
-                let _ = self.event_proxy.send_event(event);
+                let action = crate::action::Action::QuickRun {
+                    command: options.command.clone(),
+                    no_switch: options.no_switch,
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Exec(exec) => {
                 match serde_json::from_str::<crate::action::Action>(&exec.json) {
