@@ -140,11 +140,11 @@ fn default_config_string() -> String {
     "\
 # Alacritty-Kitty Configuration
 # Auto-generated on first run.
-# Theme: ~/.config/alacritty/themes/dark.toml
+# Theme: ~/.config/alacritty/themes/focus_nova.toml
 # Menu:  ~/.config/alacritty/menu.toml
 
 [general]
-import = [\"~/.config/alacritty/themes/dark.toml\", \"~/.config/alacritty/menu.toml\"]
+import = [\"~/.config/alacritty/themes/focus_nova.toml\", \"~/.config/alacritty/menu.toml\"]
 live_config_reload = true
 ipc_socket = true
 
@@ -253,43 +253,43 @@ list = \"sessions\"
 
 fn default_theme_string() -> String {
     "\
-# Alacritty-Kitty Dark Theme
+# Alacritty-Kitty Focus Nova Theme
 # Auto-generated on first run.
 
 [colors]
 draw_bold_text_with_bright_colors = false
 
 [colors.primary]
-background = \"#1c1e26\"
-foreground = \"#c0caf5\"
+background = \"#1e1e2e\"
+foreground = \"#dcdcdc\"
 
 [colors.normal]
-black   = \"#1c1e26\"
-red     = \"#e9436d\"
-green   = \"#09f7a0\"
-yellow  = \"#fabd2f\"
-blue    = \"#6c6f93\"
-magenta = \"#b877db\"
-cyan    = \"#25b0bc\"
-white   = \"#c0caf5\"
+black   = \"#1e1e2e\"
+red     = \"#ff6e7f\"
+green   = \"#c0fca0\"
+yellow  = \"#f9e2af\"
+blue    = \"#89b4fa\"
+magenta = \"#cba6f7\"
+cyan    = \"#94e2d5\"
+white   = \"#dcdcdc\"
 
 [colors.bright]
-black   = \"#54546d\"
-red     = \"#e9436d\"
-green   = \"#09f7a0\"
-yellow  = \"#fabd2f\"
-blue    = \"#6c6f93\"
-magenta = \"#b877db\"
-cyan    = \"#25b0bc\"
-white   = \"#c0caf5\"
+black   = \"#2e2e3e\"
+red     = \"#ff6e7f\"
+green   = \"#c0fca0\"
+yellow  = \"#f9e2af\"
+blue    = \"#89b4fa\"
+magenta = \"#cba6f7\"
+cyan    = \"#94e2d5\"
+white   = \"#f4f4f5\"
 
 [colors.cursor]
-text   = \"#1c1e26\"
-cursor = \"#c0caf5\"
+text   = \"#1e1e2e\"
+cursor = \"#dcdcdc\"
 
 [colors.selection]
-text       = \"#1c1e26\"
-background = \"#c0caf5\"
+text       = \"#1e1e2e\"
+background = \"#f9e2af\"
 ".to_string()
 }
 
@@ -300,7 +300,7 @@ fn create_default_config_inner(conf_dir: &PathBuf) -> Result<(), Box<dyn Error>>
 
     let themes_dir = conf_dir.join("themes");
     std::fs::create_dir_all(&themes_dir)?;
-    let theme_path = themes_dir.join("dark.toml");
+    let theme_path = themes_dir.join("focus_nova.toml");
     std::fs::write(&theme_path, default_theme_string())?;
     eprintln!("alacritty: created theme at {}", theme_path.display());
 
