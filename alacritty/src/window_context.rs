@@ -966,6 +966,9 @@ impl WindowContext {
                         self.pane_resize_mode = !self.pane_resize_mode;
                         log::info!("[panes] resize mode: {}", self.pane_resize_mode);
                     },
+                    "quit" => {
+                        self.confirm_window_close();
+                    },
                     _ => {},
                 }
             },

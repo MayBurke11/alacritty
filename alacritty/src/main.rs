@@ -249,6 +249,9 @@ action = \"save-session\"
 [[menu.items.submenu]]
 label = \"LOAD\"
 list = \"sessions\"
+[[menu.items.submenu]]
+label = \"QUIT\"
+action = \"quit\"
 ".to_string()
 }
 
