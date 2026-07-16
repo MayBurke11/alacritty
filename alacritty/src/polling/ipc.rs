@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Error as IoError, ErrorKind, Result as IoResult, Write};
-use std::net::Shutdown;
+use std::net::{Shutdown, TcpListener};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -277,6 +277,30 @@ pub fn socket_prefix() -> String {
 #[cfg(target_os = "macos")]
 pub fn socket_prefix() -> String {
     String::from("Alacritty")
+}
+
+/// Start a TCP listener for remote IPC (localhost by default).
+pub fn start_tcp_listener(addr: &str, proxy: EventLoopProxy<Event>) -> IoResult<()> {
+    let listener = TcpListener::bind(addr)?;
+    log::info!("TCP IPC listening on {addr}");
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(&stream);
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                continue;
+            }
+            match serde_json::from_str::<crate::action::Action>(&line) {
+                Ok(action) => {
+                    let _ = proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                },
+                Err(err) => {
+                    warn!("TCP: failed to parse Action: {err}");
+                },
+            }
+        }
+    });
+    Ok(())
 }
 
 /// IPC socket replies.

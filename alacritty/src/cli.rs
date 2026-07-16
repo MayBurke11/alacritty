@@ -54,6 +54,11 @@ pub struct Options {
     #[clap(long, value_hint = ValueHint::FilePath)]
     pub socket: Option<PathBuf>,
 
+    /// TCP address for remote IPC (e.g. 127.0.0.1:9090).
+    #[cfg(unix)]
+    #[clap(long)]
+    pub tcp_addr: Option<String>,
+
     /// Reduces the level of verbosity (the min level is -qq).
     #[clap(short, conflicts_with("verbose"), action = ArgAction::Count)]
     quiet: u8,

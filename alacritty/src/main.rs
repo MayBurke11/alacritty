@@ -477,6 +477,14 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
         },
     };
 
+    // Start TCP listener if --tcp-addr is set.
+    #[cfg(unix)]
+    if let Some(ref tcp_addr) = options.tcp_addr {
+        if let Err(err) = ipc::start_tcp_listener(tcp_addr, window_event_loop.create_proxy()) {
+            log::warn!("Unable to start TCP listener on {tcp_addr}: {err}");
+        }
+    }
+
     // Setup automatic RAII cleanup for our files.
     let log_cleanup = log_file.filter(|_| !config.debug.persistent_logging);
     let _files = TemporaryFiles {
