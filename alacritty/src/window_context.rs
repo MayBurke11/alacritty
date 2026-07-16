@@ -1153,11 +1153,12 @@ impl WindowContext {
                 for saved_pane in &saved.additional_panes {
                     if saved_pane.pane_id == 0 { continue; }
                     let pane_id = crate::pane_tree::PaneId(saved_pane.pane_id);
-                    if let Ok(pane_state) = Self::create_pane(
+                    if let Ok((pane_state, event_loop)) = Self::create_pane(
                         &config, window_id, size_info, &proxy, tab_id, pane_id,
                         saved_pane.command.clone(),
                     ) {
                         tab.panes.additional.insert(pane_id, pane_state);
+                        let _ = event_loop.spawn();
                     }
                 }
             }
@@ -2169,8 +2170,9 @@ impl WindowContext {
         let pane_size = if let Some(rect) = new_pane_rect {
             crate::display::SizeInfo::new(rect.width.max(1.), rect.height.max(1.), cell_w, cell_h, padding_x, padding_y, false)
         } else { full_size_info };
-        if let Ok(pane_state) = Self::create_pane(&config, window_id, pane_size, &event_loop_proxy, tab_id, new_pane_id, None) {
+        if let Ok((pane_state, event_loop)) = Self::create_pane(&config, window_id, pane_size, &event_loop_proxy, tab_id, new_pane_id, None) {
             tab.panes.additional.insert(new_pane_id, pane_state);
+            let _ = event_loop.spawn();  // spawn IO thread AFTER insertion
         }
         tab.panes.active = new_pane_id;
         self.display.damage_tracker.frame().mark_fully_damaged();
@@ -2178,7 +2180,7 @@ impl WindowContext {
         self.mark_dirty();
     }
 
-    fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId, command: Option<Vec<String>>) -> Result<PaneState, Box<dyn Error>> {
+    fn create_pane(config: &UiConfig, window_id: WindowId, size_info: crate::display::SizeInfo, proxy: &EventLoopProxy<Event>, tab_id: TabId, pane_id: PaneId, command: Option<Vec<String>>) -> Result<(PaneState, PtyEventLoop<alacritty_terminal::tty::Pty, EventProxy>), Box<dyn Error>> {
         let mut pty_config = config.pty_config();
         if let Some(ref cmd) = command {
             if !cmd.is_empty() {
@@ -2196,9 +2198,9 @@ impl WindowContext {
         #[cfg(not(windows))] let shell_pid = pty.child().id();
         let event_loop = PtyEventLoop::new(Arc::clone(&terminal), event_proxy.clone(), pty, pty_config.drain_on_exit, config.debug.ref_test)?;
         let loop_tx = event_loop.channel();
-        let _io_thread = event_loop.spawn();
+        // Don't spawn IO thread yet — caller must spawn after pane is inserted.
         if config.cursor.style().blinking { event_proxy.send_event(TerminalEvent::CursorBlinkingChange.into()); }
-        Ok(PaneState::new(pane_id, terminal, Notifier(loop_tx), command, master_fd, shell_pid))
+        Ok((PaneState::new(pane_id, terminal, Notifier(loop_tx), command, master_fd, shell_pid), event_loop))
     }
 
     fn close_pane(&mut self) {
