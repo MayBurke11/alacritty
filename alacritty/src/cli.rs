@@ -551,13 +551,13 @@ pub struct TabCreateOptions {
 #[cfg(unix)]
 #[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct TabQuickRun {
-    /// Command and args to execute in the new tab.
-    #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
-    pub command: Vec<String>,
-
     /// Do not switch to the new tab.
     #[clap(long)]
     pub no_switch: bool,
+
+    /// Command and args to execute in the new tab.
+    #[clap(short = 'e', long, num_args = 1)]
+    pub command: Vec<String>,
 
     /// Config overrides for this tab [example: 'colors.primary.background="#000"'].
     #[clap(short = 'o', long = "option", num_args = 1..)]
