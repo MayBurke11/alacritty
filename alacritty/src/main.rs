@@ -133,6 +133,157 @@ impl Drop for TemporaryFiles {
     }
 }
 
+/// Create default config files on first run.
+fn create_default_config() -> Result<(), Box<dyn Error>> {
+    let home = std::env::var("HOME").map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| ".".into());
+    let conf_dir = home.join(".config").join("alacritty");
+    std::fs::create_dir_all(&conf_dir)?;
+
+    let config_str = "\
+# Alacritty-Kitty Configuration
+# Auto-generated on first run.
+
+[general]
+live_config_reload = true
+ipc_socket = true
+
+[env]
+TERM = \"alacritty\"
+
+[window]
+startup_mode = \"Maximized\"
+decorations = \"None\"
+option_as_alt = \"None\"
+
+[font]
+size = 11
+
+[terminal]
+shell = { program = \"/usr/bin/zsh\", args = [\"-l\"] }
+
+[colors]
+draw_bold_text_with_bright_colors = false
+
+[colors.primary]
+background = \"#1c1e26\"
+foreground = \"#c0caf5\"
+
+[colors.normal]
+black   = \"#1c1e26\"
+red     = \"#e9436d\"
+green   = \"#09f7a0\"
+yellow  = \"#fabd2f\"
+blue    = \"#6c6f93\"
+magenta = \"#b877db\"
+cyan    = \"#25b0bc\"
+white   = \"#c0caf5\"
+
+[colors.bright]
+black   = \"#54546d\"
+red     = \"#e9436d\"
+green   = \"#09f7a0\"
+yellow  = \"#fabd2f\"
+blue    = \"#6c6f93\"
+magenta = \"#b877db\"
+cyan    = \"#25b0bc\"
+white   = \"#c0caf5\"
+
+[colors.cursor]
+text   = \"#1c1e26\"
+cursor = \"#c0caf5\"
+
+[colors.selection]
+text       = \"#1c1e26\"
+background = \"#c0caf5\"
+
+[tabs]
+tab_bar_edge = \"top\"
+tab_bar_style = \"Slant\"
+tab_bar_min_tabs = 1
+
+[tabs.mouse]
+enabled = true
+
+[menu]
+menu_bar_edge = \"bottom\"
+
+[[menu.items]]
+label = \"PAN\"
+[[menu.items.submenu]]
+label = \"SPLIT\"
+[[menu.items.submenu.submenu]]
+label = \"RIGHT\"
+action = \"split-right\"
+[[menu.items.submenu.submenu]]
+label = \"DOWN\"
+action = \"split-down\"
+[[menu.items.submenu]]
+label = \"RESIZE\"
+action = \"resize-mode\"
+[[menu.items.submenu]]
+label = \"KILL\"
+action = \"close-pane\"
+[[menu.items.submenu]]
+label = \"FULL\"
+action = \"toggle-zoom\"
+
+[[menu.items]]
+label = \"TAB\"
+[[menu.items.submenu]]
+label = \"CREATE\"
+action = \"create-tab\"
+[[menu.items.submenu]]
+label = \"KILL\"
+action = \"close-tab\"
+[[menu.items.submenu]]
+label = \"RENAME\"
+action = \"rename-tab\"
+[[menu.items.submenu]]
+label = \"PIN\"
+action = \"pin-tab\"
+[[menu.items.submenu]]
+label = \"FOCUS\"
+list = \"tabs\"
+
+[[menu.items]]
+label = \"SESS\"
+[[menu.items.submenu]]
+label = \"SAVE\"
+action = \"save-session\"
+[[menu.items.submenu]]
+label = \"LOAD\"
+list = \"sessions\"
+
+# Alt+arrows for pane focus
+[[keyboard.bindings]]
+key = \"ArrowRight\"
+mods = \"Alt\"
+action = \"FocusRight\"
+
+[[keyboard.bindings]]
+key = \"ArrowLeft\"
+mods = \"Alt\"
+action = \"FocusLeft\"
+
+[[keyboard.bindings]]
+key = \"ArrowUp\"
+mods = \"Alt\"
+action = \"FocusUp\"
+
+[[keyboard.bindings]]
+key = \"ArrowDown\"
+mods = \"Alt\"
+action = \"FocusDown\"
+";
+
+    let path = conf_dir.join("alacritty.toml");
+    std::fs::write(&path, config_str)?;
+    eprintln!("alacritty: created default config at {}", path.display());
+
+    Ok(())
+}
+
 /// Run main Alacritty entrypoint.
 ///
 /// Creates a window, the terminal state, PTY, I/O event loop, input processor,
@@ -280,7 +431,16 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
     info!("Running on Wayland");
 
     // Load configuration file.
-    let config = config::load(&mut options);
+    let mut config = config::load(&mut options);
+
+    // First run: no config file found — create one and reload.
+    if config.config_paths.is_empty() && !options.create_config {
+        if let Err(e) = create_default_config() {
+            eprintln!("alacritty: failed to create default config: {e}");
+        }
+        config = config::load(&mut options);
+    }
+
     log_config_path(&config);
 
     // Update the log level from config.
