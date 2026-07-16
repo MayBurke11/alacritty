@@ -1650,125 +1650,60 @@ impl WindowContext {
                     self.focused = *is_focused;
                 },
                 WinitEvent::UserEvent(Event { payload: EventType::Tab(action), .. }) => {
-                    match action {
-                        TabAction::Create => {
-                            if let Err(err) = self.create_tab() {
-                                log::error!("Could not create tab: {err:?}");
-                            }
-                        },
-                        TabAction::Close => self.close_active_tab(),
-                        TabAction::ConfirmWindowClose => self.confirm_window_close(),
-                        TabAction::CancelWindowClose => self.cancel_window_close_confirmation(),
-                        TabAction::SelectNext => {
-                            if !self.tabs.is_empty() {
-                                self.set_active_tab((self.active_tab + 1) % self.tabs.len());
-                            }
-                        },
-                        TabAction::SelectPrevious => {
-                            if !self.tabs.is_empty() {
-                                let next =
-                                    (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
-                                self.set_active_tab(next);
-                            }
-                        },
-                        TabAction::Select(index) => self.set_active_tab(*index),
-                        TabAction::SelectLast => {
-                            if !self.tabs.is_empty() {
-                                self.set_active_tab(self.tabs.len() - 1);
-                            }
-                        },
-                        TabAction::MoveForward => self.move_active_tab(1),
-                        TabAction::MoveBackward => self.move_active_tab(-1),
-                        TabAction::SetTitle => self.start_tab_title_editor(),
-                        TabAction::ConfirmTitle => self.confirm_tab_title_editor(),
-                        TabAction::CancelTitle => self.cancel_tab_title_editor(),
-                        TabAction::TitleInput(c) => self.tab_title_input(*c),
-                        TabAction::TitlePopWord => self.tab_title_pop_word(),
-                        TabAction::Run => self.start_run_editor(),
-                        TabAction::ConfirmRun => self.confirm_run_editor(false),
-                        TabAction::ConfirmRunNoSwitch => self.confirm_run_editor(true),
-                        TabAction::CancelRun => self.cancel_run_editor(),
-                        TabAction::RunInput(c) => self.run_editor_input(*c),
-                        TabAction::RunPopWord => self.run_editor_pop_word(),
-                        TabAction::TogglePin => self.toggle_pin_at(self.active_tab),
+                    use crate::action::Action as AppAction;
+                    use crate::action::{FocusDir, MenuDir, SplitDir};
+                    let app_action = match action {
+                        TabAction::Create => AppAction::CreateTab { command: None, cwd: None, config: None, no_switch: false },
+                        TabAction::Close => AppAction::CloseTab { index: None },
+                        TabAction::ConfirmWindowClose => { self.confirm_window_close(); continue; },
+                        TabAction::CancelWindowClose => { self.cancel_window_close_confirmation(); continue; },
+                        TabAction::SelectNext => AppAction::SelectNextTab,
+                        TabAction::SelectPrevious => AppAction::SelectPreviousTab,
+                        TabAction::Select(index) => AppAction::SelectTab { index: *index },
+                        TabAction::SelectLast => AppAction::SelectLastTab,
+                        TabAction::MoveForward => AppAction::MoveTab { index: self.active_tab, delta: 1 },
+                        TabAction::MoveBackward => AppAction::MoveTab { index: self.active_tab, delta: -1 },
+                        TabAction::SetTitle => { self.start_tab_title_editor(); continue; },
+                        TabAction::ConfirmTitle => { self.confirm_tab_title_editor(); continue; },
+                        TabAction::CancelTitle => { self.cancel_tab_title_editor(); continue; },
+                        TabAction::TitleInput(c) => { self.tab_title_input(*c); continue; },
+                        TabAction::TitlePopWord => { self.tab_title_pop_word(); continue; },
+                        TabAction::Run => { self.start_run_editor(); continue; },
+                        TabAction::ConfirmRun => { self.confirm_run_editor(false); continue; },
+                        TabAction::ConfirmRunNoSwitch => { self.confirm_run_editor(true); continue; },
+                        TabAction::CancelRun => { self.cancel_run_editor(); continue; },
+                        TabAction::RunInput(c) => { self.run_editor_input(*c); continue; },
+                        TabAction::RunPopWord => { self.run_editor_pop_word(); continue; },
+                        TabAction::TogglePin => AppAction::TogglePin { index: self.active_tab },
                         TabAction::ToggleMenu(idx) => {
                             self.menu.state.focus = *idx;
                             let sel = self.menu.state.select(&self.config.menu);
                             self.handle_menu_selection(sel);
                             self.dirty = true;
+                            continue;
                         },
-                        TabAction::MenuCommand(_idx, _sub_idx) => {
-                            // Legacy — handled by MenuClick now.
-                            self.dirty = true;
-                        },
-                        TabAction::ToggleLocked => {
-                            self.menu.state.active = !self.menu.state.active;
-                            if !self.menu.state.active {
-                                self.menu.state.path.clear();
-                                self.menu.state.list_mode = None;
-                                self.menu.state.focus = 0;
-                            }
-                            self.dirty = true;
-                        },
-                        TabAction::MenuFocusLeft => {
-                            if self.menu.state.focus > 0 {
-                                self.menu.state.focus -= 1;
-                            }
-                            self.dirty = true;
-                        },
-                        TabAction::MenuFocusRight => {
-                            let count = self.menu.state.item_count(&self.config.menu);
-                            if self.menu.state.focus + 1 <= count {
-                                self.menu.state.focus += 1;
-                            }
-                            self.dirty = true;
-                        },
-                        TabAction::MenuSelect => {
-                            let sel = self.menu.state.select(&self.config.menu);
-                            self.handle_menu_selection(sel);
-                            self.dirty = true;
-                        },
-                        TabAction::MenuBack => {
-                            self.menu.state.back();
-                            self.dirty = true;
-                        },
-                        TabAction::MenuClick(idx) => {
-                            self.menu.state.focus = *idx;
-                            let sel = self.menu.state.select(&self.config.menu);
-                            self.handle_menu_selection(sel);
-                            self.dirty = true;
-                        },
-                        TabAction::MenuLetterKey(ch) => {
-                            let labels = self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
-                            let ch_lower: char = ch.to_lowercase().next().unwrap_or(*ch);
-                            for (i, (label, _)) in labels.iter().enumerate() {
-                                if i == 0 { continue; }
-                                let first_char = label.chars().next()
-                                    .map(|c| c.to_lowercase().next().unwrap_or(c));
-                                if first_char == Some(ch_lower) {
-                                    self.menu.state.focus = i;
-                                    let sel = self.menu.state.select(&self.config.menu);
-                                    self.handle_menu_selection(sel);
-                                    break;
-                                }
-                            }
-                            self.dirty = true;
-                        },
-                        // Pane actions.
-                        TabAction::SplitRight => self.split_pane(SplitDir::Horizontal),
-                        TabAction::SplitDown => self.split_pane(SplitDir::Vertical),
-                        TabAction::ClosePane => self.close_pane(),
-                        TabAction::FocusLeft => self.focus_pane(FocusDir::Left),
-                        TabAction::FocusRight => self.focus_pane(FocusDir::Right),
-                        TabAction::FocusUp => self.focus_pane(FocusDir::Up),
-                        TabAction::FocusDown => self.focus_pane(FocusDir::Down),
-                        TabAction::ToggleZoom => self.toggle_zoom(),
-                        TabAction::ResizeRight => self.resize_pane(SplitDir::Horizontal, true),
-                        TabAction::ResizeLeft => self.resize_pane(SplitDir::Horizontal, false),
-                        TabAction::ResizeUp => self.resize_pane(SplitDir::Vertical, false),
-                        TabAction::ResizeDown => self.resize_pane(SplitDir::Vertical, true),
-                    }
-                    continue;
+                        TabAction::MenuCommand(_, _) => { self.dirty = true; continue; },
+                        TabAction::ToggleLocked => AppAction::ToggleMenu,
+                        TabAction::MenuFocusLeft => AppAction::MenuNavigate { direction: MenuDir::Left },
+                        TabAction::MenuFocusRight => AppAction::MenuNavigate { direction: MenuDir::Right },
+                        TabAction::MenuSelect => AppAction::MenuSelect,
+                        TabAction::MenuBack => AppAction::MenuBack,
+                        TabAction::MenuClick(idx) => AppAction::MenuClick { index: *idx },
+                        TabAction::MenuLetterKey(ch) => AppAction::MenuLetter { ch: *ch },
+                        TabAction::SplitRight => AppAction::SplitPane { direction: SplitDir::Right },
+                        TabAction::SplitDown => AppAction::SplitPane { direction: SplitDir::Down },
+                        TabAction::ClosePane => AppAction::ClosePane,
+                        TabAction::FocusLeft => AppAction::FocusPane { direction: FocusDir::Left },
+                        TabAction::FocusRight => AppAction::FocusPane { direction: FocusDir::Right },
+                        TabAction::FocusUp => AppAction::FocusPane { direction: FocusDir::Up },
+                        TabAction::FocusDown => AppAction::FocusPane { direction: FocusDir::Down },
+                        TabAction::ToggleZoom => AppAction::ToggleZoom,
+                        TabAction::ResizeRight => AppAction::ResizePane { direction: SplitDir::Right, grow: true },
+                        TabAction::ResizeLeft => AppAction::ResizePane { direction: SplitDir::Right, grow: false },
+                        TabAction::ResizeUp => AppAction::ResizePane { direction: SplitDir::Down, grow: false },
+                        TabAction::ResizeDown => AppAction::ResizePane { direction: SplitDir::Down, grow: true },
+                    };
+                    let _ = self.handle_action(app_action);
                 },
                 _ => (),
             }
