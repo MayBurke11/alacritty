@@ -309,6 +309,71 @@ impl WindowContext {
         self.dirty = true;
     }
 
+    fn process_menu_ops(&mut self) {
+        if std::mem::take(&mut self.menu.toggle_pending) {
+            self.menu.state.active = !self.menu.state.active;
+            if !self.menu.state.active {
+                self.menu.state.path.clear();
+                self.menu.state.list_mode = None;
+                self.menu.state.focus = 0;
+            }
+            log::debug!("[menu-sync] op=ToggleLocked AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
+                self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus,
+                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+            self.dirty = true;
+        }
+
+        for op in std::mem::take(&mut self.menu.op_pending) {
+            log::debug!("[menu-sync] op={:?} BEFORE: active={} path={:?} list={:?} focus={}",
+                op, self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus);
+            match op {
+                MenuOp::FocusLeft => {
+                    if self.menu.state.focus > 0 { self.menu.state.focus -= 1; }
+                    self.dirty = true;
+                },
+                MenuOp::FocusRight => {
+                    let count = self.menu.state.item_count(&self.config.menu);
+                    if self.menu.state.focus + 1 <= count { self.menu.state.focus += 1; }
+                    self.dirty = true;
+                },
+                MenuOp::Select => {
+                    let sel = self.menu.state.select(&self.config.menu);
+                    self.handle_menu_selection(sel);
+                    self.dirty = true;
+                },
+                MenuOp::Back => { self.menu.state.back(); self.dirty = true; },
+                MenuOp::Click(idx) => {
+                    self.menu.state.focus = idx;
+                    let sel = self.menu.state.select(&self.config.menu);
+                    self.handle_menu_selection(sel);
+                    self.dirty = true;
+                },
+                MenuOp::LetterKey(ch) => {
+                    let labels = self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
+                    let ch_lower: char = ch.to_lowercase().next().unwrap_or(ch);
+                    for (i, (label, _)) in labels.iter().enumerate() {
+                        if i == 0 { continue; }
+                        let first_char = label.chars().next().map(|c| c.to_lowercase().next().unwrap_or(c));
+                        if first_char == Some(ch_lower) {
+                            log::debug!("[menu-sync] LetterKey '{}' matched label '{}' at idx={}", ch, label, i);
+                            self.menu.state.focus = i;
+                            let sel = self.menu.state.select(&self.config.menu);
+                            self.handle_menu_selection(sel);
+                            break;
+                        }
+                    }
+                    self.dirty = true;
+                },
+            }
+            log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
+                op, self.menu.state.active, self.menu.state.path,
+                self.menu.state.list_mode.is_some(), self.menu.state.focus,
+                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
+        }
+    }
+
     /// Returns true if the caller should `continue` to the next event.
     fn dispatch_tab_action(&mut self, action: &TabAction) -> bool {
         use crate::action::Action as AppAction;
@@ -1778,79 +1843,7 @@ impl WindowContext {
             processor.handle_event(event);
         }
 
-        // Synchronous menu toggle (no frame delay).
-        if std::mem::take(&mut self.menu.toggle_pending) {
-            self.menu.state.active = !self.menu.state.active;
-            if !self.menu.state.active {
-                self.menu.state.path.clear();
-                self.menu.state.list_mode = None;
-                self.menu.state.focus = 0;
-            }
-            log::debug!("[menu-sync] op=ToggleLocked AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
-                self.menu.state.active, self.menu.state.path,
-                self.menu.state.list_mode.is_some(), self.menu.state.focus,
-                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
-            self.dirty = true;
-        }
-
-        // Synchronous menu operations (no frame delay).
-        for op in std::mem::take(&mut self.menu.op_pending) {
-            log::debug!("[menu-sync] op={:?} BEFORE: active={} path={:?} list={:?} focus={}",
-                op, self.menu.state.active, self.menu.state.path,
-                self.menu.state.list_mode.is_some(), self.menu.state.focus);
-            match op {
-                MenuOp::FocusLeft => {
-                    if self.menu.state.focus > 0 {
-                        self.menu.state.focus -= 1;
-                    }
-                    self.dirty = true;
-                },
-                MenuOp::FocusRight => {
-                    let count = self.menu.state.item_count(&self.config.menu);
-                    if self.menu.state.focus + 1 <= count {
-                        self.menu.state.focus += 1;
-                    }
-                    self.dirty = true;
-                },
-                MenuOp::Select => {
-                    let sel = self.menu.state.select(&self.config.menu);
-                    self.handle_menu_selection(sel);
-                    self.dirty = true;
-                },
-                MenuOp::Back => {
-                    self.menu.state.back();
-                    self.dirty = true;
-                },
-                MenuOp::Click(idx) => {
-                    self.menu.state.focus = idx;
-                    let sel = self.menu.state.select(&self.config.menu);
-                    self.handle_menu_selection(sel);
-                    self.dirty = true;
-                },
-                MenuOp::LetterKey(ch) => {
-                    let labels = self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode);
-                    let ch_lower: char = ch.to_lowercase().next().unwrap_or(ch);
-                    for (i, (label, _)) in labels.iter().enumerate() {
-                        if i == 0 { continue; }
-                        let first_char = label.chars().next()
-                            .map(|c| c.to_lowercase().next().unwrap_or(c));
-                        if first_char == Some(ch_lower) {
-                            log::debug!("[menu-sync] LetterKey '{}' matched label '{}' at idx={}",
-                                ch, label, i);
-                            self.menu.state.focus = i;
-                            let sel = self.menu.state.select(&self.config.menu);
-                            self.handle_menu_selection(sel);
-                            break;
-                        }
-                    }
-                    self.dirty = true;
-                },
-            }
-            log::debug!("[menu-sync] op={:?} AFTER: active={} path={:?} list={:?} focus={} labels={:?}",
-                op, self.menu.state.active, self.menu.state.path,
-                self.menu.state.list_mode.is_some(), self.menu.state.focus,
-                self.menu.state.bar_labels(&self.config.menu, self.active_tab().panes.tree.leaf_ids().len(), self.pane_resize_mode).iter().map(|(l,_)| l.as_str()).collect::<Vec<_>>());
-        }
+        self.process_menu_ops();
 
         self.sync_focus();
 
