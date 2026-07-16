@@ -245,6 +245,18 @@ impl WindowContext {
             tab.message_buffer.remove_target(WINDOW_CLOSE_CONFIRMATION_TARGET);
         }
 
+        // Auto-save session if enabled.
+        if self.config.general.auto_save_session {
+            if let Ok(home) = std::env::var("HOME") {
+                let dir = std::path::PathBuf::from(home).join(".config").join("alacritty").join("sessions");
+                std::fs::create_dir_all(&dir).ok();
+                let path = dir.join("last.json");
+                let data = self.tabs_save_json();
+                std::fs::write(&path, data).ok();
+                log::info!("[session] auto-saved to {}", path.display());
+            }
+        }
+
         self.display.window.hold = false;
         for tab in &mut self.tabs {
             tab.terminal.lock().exit();

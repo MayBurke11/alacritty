@@ -246,7 +246,14 @@ impl ApplicationHandler<Event> for Processor {
 
             // Process tab restore after the initial window is fully initialized.
             if let Some(ref restore_path) = self.cli_options.restore {
-                match std::fs::read(restore_path) {
+                let path = if restore_path.to_string_lossy() == "__last__" {
+                    let home = std::env::var("HOME").map(std::path::PathBuf::from)
+                        .unwrap_or_else(|_| ".".into());
+                    home.join(".config").join("alacritty").join("sessions").join("last.json")
+                } else {
+                    restore_path.clone()
+                };
+                match std::fs::read(&path) {
                     Ok(data) => {
                         for wc in self.windows.values_mut() {
                             if let Err(err) = wc.restore_tabs(&data) {

@@ -147,6 +147,7 @@ fn default_config_string() -> String {
 import = [\"~/.config/alacritty/themes/focus_nova.toml\", \"~/.config/alacritty/menu.toml\"]
 live_config_reload = true
 ipc_socket = true
+auto_save_session = true
 
 [env]
 TERM = \"alacritty\"

@@ -27,6 +27,10 @@ pub struct General {
     /// Offer IPC through a unix socket.
     #[allow(unused)]
     pub ipc_socket: bool,
+
+    /// Auto-save session on exit (to ~/.config/alacritty/sessions/last.json).
+    #[config(default = "false")]
+    pub auto_save_session: bool,
 }
 
 impl Default for General {
@@ -34,6 +38,7 @@ impl Default for General {
         Self {
             live_config_reload: true,
             ipc_socket: true,
+            auto_save_session: false,
             working_directory: Default::default(),
             import: Default::default(),
         }

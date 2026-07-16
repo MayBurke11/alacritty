@@ -76,8 +76,8 @@ pub struct Options {
     #[clap(long)]
     pub daemon: bool,
 
-    /// Restore tabs from a saved session file.
-    #[clap(long, value_hint = ValueHint::FilePath)]
+    /// Restore tabs from last session (or specify path).
+    #[clap(long, value_hint = ValueHint::FilePath, num_args = 0..=1, default_missing_value = "__last__")]
     pub restore: Option<PathBuf>,
 
     /// Print a default configuration file to stdout.
