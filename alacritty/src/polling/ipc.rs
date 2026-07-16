@@ -62,7 +62,20 @@ impl IpcListener {
         let message: SocketMessage = match serde_json::from_str(&self.data) {
             Ok(message) => message,
             Err(_) => {
-                // Fallback: try unified Action format.
+                // Fallback: try unified IpcRequest format.
+                if let Ok(req) = serde_json::from_str::<IpcRequest>(&self.data) {
+                    let event = Event::new(EventType::IpcAction(req.action), None);
+                    let _ = self.event_proxy.send_event(event);
+                    // Send reply if id present.
+                    if let Some(id) = req.id {
+                        let resp = IpcResponse { id: Some(id), ok: true, data: None, error: None };
+                        let mut json = serde_json::to_string(&resp).unwrap_or_default();
+                        json.push('\n');
+                        let _ = std::io::Write::write_all(&mut &stream, json.as_bytes());
+                    }
+                    return Ok(());
+                }
+                // Try bare Action format.
                 match serde_json::from_str::<crate::action::Action>(&self.data) {
                     Ok(action) => {
                         let event = Event::new(EventType::IpcAction(action), None);
@@ -241,28 +254,37 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
         return Ok(());
     }
 
-    // Parse IPC reply.
-    let reply: SocketReply = serde_json::from_str(&buffer)
-        .map_err(|err| IoError::other(format!("Invalid IPC format: {err}")))?;
+    // Parse IPC reply — try SocketReply first, then IpcResponse.
+    if let Ok(reply) = serde_json::from_str::<SocketReply>(&buffer) {
+        return handle_socket_reply(message, &reply);
+    }
+    if let Ok(resp) = serde_json::from_str::<IpcResponse>(&buffer) {
+        if let Some(data) = resp.data {
+            println!("{data}");
+        } else if let Some(err) = resp.error {
+            eprintln!("Error: {err}");
+        } else {
+            println!("{}", if resp.ok { "ok" } else { "error" });
+        }
+        return Ok(());
+    }
+    Ok(())
+}
 
-    // Ensure reply matches request.
-    match (message, &reply) {
-        // Write requested config to STDOUT.
+fn handle_socket_reply(message: &SocketMessage, reply: &SocketReply) -> IoResult<()> {
+    match (message, reply) {
         (SocketMessage::GetConfig(..), SocketReply::GetConfig(config)) => {
             println!("{config}");
             Ok(())
         },
-        // Write tab list to STDOUT.
         (SocketMessage::ListTabs(..), SocketReply::ListTabs(tabs)) => {
             println!("{tabs}");
             Ok(())
         },
-        // Write tab list to STDOUT.
         (SocketMessage::SaveTabs(..), SocketReply::SaveTabs(tabs)) => {
             println!("{tabs}");
             Ok(())
         },
-        // Ignore requests without reply.
         _ => Ok(()),
     }
 }
@@ -394,4 +416,25 @@ pub enum SocketReply {
     GetConfig(String),
     ListTabs(String),
     SaveTabs(String),
+}
+
+/// JSON-RPC-light request wrapper.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IpcRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<u64>,
+    #[serde(flatten)]
+    pub action: crate::action::Action,
+}
+
+/// JSON-RPC-light response wrapper.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IpcResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<u64>,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
