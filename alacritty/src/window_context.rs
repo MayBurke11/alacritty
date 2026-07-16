@@ -1649,6 +1649,10 @@ impl WindowContext {
                 WinitEvent::WindowEvent { event: WindowEvent::Focused(is_focused), .. } => {
                     self.focused = *is_focused;
                 },
+                #[cfg(unix)]
+                WinitEvent::UserEvent(Event { payload: EventType::IpcAction(action), .. }) => {
+                    let _ = self.handle_action(action.clone());
+                },
                 WinitEvent::UserEvent(Event { payload: EventType::Tab(action), .. }) => {
                     use crate::action::Action as AppAction;
                     use crate::action::{FocusDir, MenuDir, SplitDir};

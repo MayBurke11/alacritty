@@ -61,9 +61,19 @@ impl IpcListener {
 
         let message: SocketMessage = match serde_json::from_str(&self.data) {
             Ok(message) => message,
-            Err(err) => {
-                warn!("Failed to parse IPC message: {err}");
-                return Ok(());
+            Err(_) => {
+                // Fallback: try unified Action format.
+                match serde_json::from_str::<crate::action::Action>(&self.data) {
+                    Ok(action) => {
+                        let event = Event::new(EventType::IpcAction(action), None);
+                        let _ = self.event_proxy.send_event(event);
+                        return Ok(());
+                    },
+                    Err(err) => {
+                        warn!("Failed to parse IPC message: {err}");
+                        return Ok(());
+                    },
+                }
             },
         };
 

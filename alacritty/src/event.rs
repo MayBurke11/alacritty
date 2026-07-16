@@ -672,6 +672,9 @@ pub enum EventType {
     Scroll(Scroll),
     CreateWindow(WindowOptions),
     Tab(TabAction),
+    /// Unified action dispatch (IPC-first).
+    #[cfg(unix)]
+    IpcAction(crate::action::Action),
     #[cfg(unix)]
     IpcConfig(IpcConfig),
     #[cfg(unix)]
@@ -2703,8 +2706,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                     TerminalEvent::Exit | TerminalEvent::ChildExit(_) | TerminalEvent::Wakeup => (),
                 },
                 #[cfg(unix)]
-                EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::Shutdown => (),
+                EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::IpcAction(_) | EventType::Shutdown => (),
                 EventType::Tab(_) => (),
+                #[cfg(unix)]
+                EventType::IpcAction(_) => (),
                 EventType::CreateTabIPC(_)
                 | EventType::ListTabsIPC(..)
                 | EventType::SelectTabIPC(..)
