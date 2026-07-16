@@ -194,7 +194,7 @@ pub struct TerminalOptions {
     pub hold: bool,
 
     /// Command and args to execute (must be last argument).
-    #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+    #[clap(short = 'e', long, num_args = 1)]
     pub command: Vec<String>,
 }
 
@@ -322,7 +322,7 @@ pub struct TabCommand {
 pub enum TabAction {
     /// Create a new tab.
     Create {
-        #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+        #[clap(short = 'e', long, num_args = 1)]
         command: Vec<String>,
         #[clap(long)]
         working_directory: Option<String>,
@@ -432,7 +432,7 @@ pub struct WindowCommand {
 pub enum WindowAction {
     /// Create a new window.
     Create {
-        #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+        #[clap(short = 'e', long, num_args = 1)]
         command: Vec<String>,
         #[clap(long)]
         working_directory: Option<String>,
@@ -485,7 +485,7 @@ pub enum ConfigAction {
     /// Set config overrides (key=value pairs).
     Set {
         /// Key=value pairs.
-        #[clap(allow_hyphen_values = true, num_args = 1..)]
+        #[clap(num_args = 1)]
         options: Vec<String>,
         /// Reset all runtime overrides before setting.
         #[clap(long)]
@@ -527,7 +527,7 @@ pub struct ScrollCommand {
 #[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct TabCreateOptions {
     /// Command and args to execute in the new tab.
-    #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+    #[clap(short = 'e', long, num_args = 1)]
     pub command: Vec<String>,
 
     /// Working directory for the new tab.
