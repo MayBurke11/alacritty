@@ -93,7 +93,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         #[cfg(unix)]
         Some(Subcommands::Mcp) => crate::ipc::mcp::run()?,
         Some(Subcommands::Migrate(options)) => migrate::migrate(options),
-        None => alacritty(options)?,
+        None => {
+            #[cfg(unix)]
+            if options.mcp {
+                crate::ipc::mcp::run()?;
+                return Ok(());
+            }
+            alacritty(options)?
+        },
     }
 
     Ok(())

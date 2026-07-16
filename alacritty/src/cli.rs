@@ -59,9 +59,10 @@ pub struct Options {
     #[clap(long)]
     pub tcp_addr: Option<String>,
 
-    /// TCP auth token (required when --tcp-addr is set).
+    /// Start MCP server over stdio (for LLM integration).
     #[cfg(unix)]
-    #[clap(long, requires = "tcp_addr")]
+    #[clap(long)]
+    pub mcp: bool,
     pub token: Option<String>,
 
     /// Reduces the level of verbosity (the min level is -qq).
