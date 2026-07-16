@@ -307,6 +307,20 @@ impl ApplicationHandler<Event> for Processor {
 
         // Handle events which don't mandate the WindowId.
         match (payload, window_id) {
+            // Dispatch unified IPC actions to windows.
+            #[cfg(unix)]
+            (EventType::IpcAction(action), _) => {
+                for ctx in self.windows.values_mut() {
+                    ctx.handle_event(
+                        #[cfg(target_os = "macos")]
+                        event_loop,
+                        &self.proxy,
+                        &mut self.clipboard,
+                        &mut self.scheduler,
+                        WinitEvent::UserEvent(Event::new(EventType::IpcAction(action.clone()), ctx.id())),
+                    );
+                }
+            },
             // Process IPC config update.
             #[cfg(unix)]
             (EventType::TreeIPC(stream), _) => {
