@@ -18,6 +18,7 @@ use glutin::display::GetGlDisplay;
 use glutin::platform::x11::X11GlConfigExt;
 use log::info;
 use serde_json as json;
+use toml::Value as TomlValue;
 use winit::event::{Event as WinitEvent, Modifiers, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::raw_window_handle::HasDisplayHandle;
@@ -531,8 +532,28 @@ impl WindowContext {
                 let config = serde_json::to_value(&*self.config).unwrap_or_default();
                 ActionResult::data(config)
             },
-            crate::action::Action::SetConfig { options: _options, reset: _reset } => {
-                ActionResult::err("use msg config set (config updates not yet implemented)")
+            crate::action::Action::SetConfig { options, reset: _reset } => {
+                for (key, value) in &options {
+                    let toml_val = match value {
+                        serde_json::Value::String(s) => TomlValue::String(s.clone()),
+                        serde_json::Value::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                TomlValue::Integer(i)
+                            } else if let Some(f) = n.as_f64() {
+                                TomlValue::Float(f)
+                            } else {
+                                TomlValue::String(n.to_string())
+                            }
+                        },
+                        serde_json::Value::Bool(b) => TomlValue::Boolean(*b),
+                        _ => TomlValue::String(value.to_string()),
+                    };
+                    self.window_config.push((key.clone(), toml_val));
+                }
+                let overridden = self.window_config.override_config_rc(self.config.clone());
+                self.update_config(overridden);
+                self.dirty = true;
+                ActionResult::success()
             },
             crate::action::Action::QuickRun { command, no_switch } => {
                 let options = crate::cli::TabCreateOptions {
