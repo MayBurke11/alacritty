@@ -15,8 +15,59 @@ save/restore, and IPC — built alongside AI (OpenCode).
 - **Modal Menu Bar** — `Ctrl+G` unlocks, letter-key navigation, nested submenus, list mode (session files). Same rendering mechanism as tab bar via `draw_bar(edge)`.
 - **Tiling Panes (BSP Tree)** — Split right/down, resize (`Ctrl+G, p, r` + `Alt+arrows`), focus (`Alt+arrows`), zoom (`Alt+F`), close (`Ctrl+Shift+#`). Fixup_subtree preserves far-side pixel positions on resize (19/19 tests).
 - **Session Save/Restore** — `Ctrl+G, s, s` saves to `~/.config/alacritty/sessions/`. `--restore` CLI flag. Pane tree + foreground commands preserved.
-- **IPC** — `alacritty msg create-tab/close-tab/list-tabs/select-tab/pin-tab/save-tabs/quickrun`. Unix socket at `$XDG_RUNTIME_DIR`.
+- **IPC-first architecture** — Unified Action dispatch via JSON over Unix socket + TCP. Every action (tab, pane, session, config) is a single `{"action":"...","params":...}` JSON message.
 - **CLI Flags** — `--create-config`, `--create-systemd-unit`, `--restore`.
+
+### IPC (alacritty msg)
+
+All commands work over Unix socket (`$XDG_RUNTIME_DIR`) or TCP (`--tcp-addr`):
+
+```bash
+# Tab management
+alacritty msg create-tab -e htop
+alacritty msg list-tabs
+alacritty msg select-tab 1
+alacritty msg close-tab 2
+alacritty msg pin-tab 1
+alacritty msg tab-nav next|previous|last
+
+# Pane management
+alacritty msg pane split right|down
+alacritty msg pane focus left|right|up|down
+alacritty msg pane zoom
+alacritty msg pane resize right grow|shrink
+alacritty msg pane close
+
+# Session & Config
+alacritty msg session save|list|load NAME
+alacritty msg config get
+alacritty msg config set font.size=14
+alacritty msg scroll-view 5
+alacritty msg bell
+
+# Universal JSON format (all actions)
+alacritty msg exec '{"action":"create_tab","command":["htop"]}'
+alacritty msg exec '{"action":"split_pane","direction":"right"}'
+alacritty msg exec '{"action":"focus_pane","direction":"left"}'
+alacritty msg exec '{"action":"select_next_tab"}'
+```
+
+**TCP server:**
+```bash
+alacritty --tcp-addr 127.0.0.1:9090 --token mysecret &
+echo 'mysecret' | nc 127.0.0.1 9090
+echo '{"action":"create_tab","command":["htop"]}' | nc 127.0.0.1 9090
+echo '{"id":1,"action":"get_config"}' | nc 127.0.0.1 9090  # reply: {"id":1,"ok":true,"data":{...}}
+```
+
+**Programmatic (Python):**
+```python
+import socket, json
+s = socket.socket(socket.AF_UNIX)
+s.connect("/run/user/1000/Alacritty-:0-*.sock")
+s.sendall(json.dumps({"action":"create_tab","command":["htop"]}).encode() + b"\n")
+s.close()
+```
 
 ### One-Line Install
 
