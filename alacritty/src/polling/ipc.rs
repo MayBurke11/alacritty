@@ -142,6 +142,64 @@ impl IpcListener {
                     },
                 }
             },
+            SocketMessage::Pane(cmd) => {
+                use crate::action::{Action as AppAction, FocusDir, SplitDir};
+                use crate::cli::PaneAction;
+                let action = match &cmd.action {
+                    PaneAction::Split { direction } => AppAction::SplitPane {
+                        direction: match direction.as_str() {
+                            "right" => SplitDir::Right,
+                            _ => SplitDir::Down,
+                        },
+                    },
+                    PaneAction::Close => AppAction::ClosePane,
+                    PaneAction::Focus { direction } => AppAction::FocusPane {
+                        direction: match direction.as_str() {
+                            "left" => FocusDir::Left,
+                            "right" => FocusDir::Right,
+                            "up" => FocusDir::Up,
+                            _ => FocusDir::Down,
+                        },
+                    },
+                    PaneAction::Zoom => AppAction::ToggleZoom,
+                    PaneAction::Resize { direction, action: resize_action } => AppAction::ResizePane {
+                        direction: match direction.as_str() {
+                            "right" => SplitDir::Right,
+                            _ => SplitDir::Down,
+                        },
+                        grow: resize_action == "grow",
+                    },
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
+            SocketMessage::Session(cmd) => {
+                use crate::action::Action as AppAction;
+                use crate::cli::SessionAction;
+                let action = match &cmd.action {
+                    SessionAction::Save => AppAction::SaveSession,
+                    SessionAction::Load { name } => AppAction::LoadSession { name: name.clone() },
+                    SessionAction::List => AppAction::ListSessions,
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
+            SocketMessage::TabNav(cmd) => {
+                use crate::action::Action as AppAction;
+                use crate::cli::TabNavAction;
+                let action = match &cmd.action {
+                    TabNavAction::Next => AppAction::SelectNextTab,
+                    TabNavAction::Previous => AppAction::SelectPreviousTab,
+                    TabNavAction::Last => AppAction::SelectLastTab,
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
+            SocketMessage::ScrollView(cmd) => {
+                let action = crate::action::Action::Scroll { lines: cmd.lines };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
+            SocketMessage::Bell => {
+                let action = crate::action::Action::Bell;
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
         }
 
         Ok(())

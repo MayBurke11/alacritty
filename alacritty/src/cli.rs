@@ -312,6 +312,21 @@ pub enum SocketMessage {
 
     /// Execute a raw Action JSON (unified IPC format).
     Exec(ExecAction),
+
+    /// Pane management.
+    Pane(PaneCommand),
+
+    /// Session management.
+    Session(SessionCommand),
+
+    /// Navigate to next/previous/last tab.
+    TabNav(TabNavCommand),
+
+    /// Scroll terminal lines.
+    ScrollView(ScrollCommand),
+
+    /// Trigger terminal bell.
+    Bell,
 }
 
 /// Raw Action JSON payload.
@@ -321,6 +336,90 @@ pub struct ExecAction {
     /// JSON string in Action format: '{"action":"create_tab","command":["htop"]}'
     #[clap(allow_hyphen_values = true)]
     pub json: String,
+}
+
+/// Pane management args.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct PaneCommand {
+    #[clap(subcommand)]
+    pub action: PaneAction,
+}
+
+#[cfg(unix)]
+#[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum PaneAction {
+    /// Split pane right or down.
+    Split {
+        #[clap(value_parser = ["right", "down"])]
+        direction: String,
+    },
+    /// Close the active pane.
+    Close,
+    /// Focus a pane in direction.
+    Focus {
+        #[clap(value_parser = ["left", "right", "up", "down"])]
+        direction: String,
+    },
+    /// Toggle pane zoom.
+    Zoom,
+    /// Resize pane (grow or shrink).
+    Resize {
+        #[clap(value_parser = ["right", "down"])]
+        direction: String,
+        #[clap(value_parser = ["grow", "shrink"])]
+        action: String,
+    },
+}
+
+/// Session management args.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SessionCommand {
+    #[clap(subcommand)]
+    pub action: SessionAction,
+}
+
+#[cfg(unix)]
+#[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum SessionAction {
+    /// Save current session.
+    Save,
+    /// Load a saved session by name.
+    Load {
+        #[clap(value_name = "NAME")]
+        name: String,
+    },
+    /// List saved sessions.
+    List,
+}
+
+/// Tab navigation args.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct TabNavCommand {
+    #[clap(subcommand)]
+    pub action: TabNavAction,
+}
+
+#[cfg(unix)]
+#[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum TabNavAction {
+    /// Switch to next tab.
+    Next,
+    /// Switch to previous tab.
+    Previous,
+    /// Switch to last tab.
+    Last,
+}
+
+/// Scroll command.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct ScrollCommand {
+    /// Number of lines to scroll (positive = down, negative = up).
+    #[clap(allow_hyphen_values = true)]
+    pub lines: i32,
 }
 
 /// Options for creating a tab via IPC.
