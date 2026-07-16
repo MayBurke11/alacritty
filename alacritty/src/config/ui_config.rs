@@ -92,10 +92,6 @@ pub struct UiConfig {
     /// Regex hints for interacting with terminal content.
     pub hints: Hints,
 
-    /// Pane margin in pixels.
-    #[config(default = "4.0")]
-    pub pane_margin: f32,
-
     /// Config for the alacritty_terminal itself.
     pub terminal: Terminal,
 
