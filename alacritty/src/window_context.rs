@@ -352,44 +352,264 @@ impl WindowContext {
     }
 
     pub fn handle_action(&mut self, action: crate::action::Action) -> crate::action::ActionResult {
-        use crate::action::ActionResult;
+        use crate::action::{ActionResult, FocusDir, MenuDir, SplitDir};
+        use crate::pane_tree::FocusDir as PaneFocusDir;
+        use crate::pane_tree::SplitDir as PaneSplitDir;
+
         match action {
-            crate::action::Action::NewWindow { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::NewWindow { .. } => ActionResult::err("use msg window create"),
             crate::action::Action::CloseWindow => ActionResult::err("not yet implemented"),
-            crate::action::Action::CreateTab { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::CloseTab { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::SelectTab { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::SelectNextTab => ActionResult::err("not yet implemented"),
-            crate::action::Action::SelectPreviousTab => ActionResult::err("not yet implemented"),
-            crate::action::Action::SelectLastTab => ActionResult::err("not yet implemented"),
-            crate::action::Action::ListTabs => ActionResult::err("not yet implemented"),
-            crate::action::Action::MoveTab { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::TogglePin { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::SetTabTitle { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::SplitPane { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::ClosePane => ActionResult::err("not yet implemented"),
-            crate::action::Action::FocusPane { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::ToggleZoom => ActionResult::err("not yet implemented"),
-            crate::action::Action::ResizePane { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::SaveSession => ActionResult::err("not yet implemented"),
-            crate::action::Action::LoadSession { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::ListSessions => ActionResult::err("not yet implemented"),
-            crate::action::Action::GetConfig => ActionResult::err("not yet implemented"),
-            crate::action::Action::SetConfig { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::QuickRun { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::Scroll { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::Copy => ActionResult::err("not yet implemented"),
-            crate::action::Action::Paste { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::ToggleMenu => ActionResult::err("not yet implemented"),
-            crate::action::Action::MenuNavigate { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::MenuSelect => ActionResult::err("not yet implemented"),
-            crate::action::Action::MenuBack => ActionResult::err("not yet implemented"),
-            crate::action::Action::MenuLetter { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::MenuClick { .. } => ActionResult::err("not yet implemented"),
-            crate::action::Action::Bell => ActionResult::err("not yet implemented"),
-            crate::action::Action::SearchForward => ActionResult::err("not yet implemented"),
-            crate::action::Action::SearchBackward => ActionResult::err("not yet implemented"),
-            crate::action::Action::SearchNext => ActionResult::err("not yet implemented"),
+            crate::action::Action::CreateTab { command, cwd, config, no_switch } => {
+                let options = crate::cli::TabCreateOptions {
+                    command: command.unwrap_or_default(),
+                    working_directory: cwd.map(std::path::PathBuf::from),
+                    no_switch,
+                    config_overrides: translate_config_overrides(config),
+                    window_id: None,
+                };
+                self.create_tab_ipc(options);
+                ActionResult::success()
+            },
+            crate::action::Action::CloseTab { index } => {
+                let idx = index.unwrap_or(self.active_tab);
+                if idx < self.tabs.len() && !self.tabs[idx].pinned {
+                    let closing_id = self.tabs[idx].id;
+                    self.handle_tab_exit(Some(closing_id));
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::SelectTab { index } => {
+                if index < self.tabs.len() {
+                    self.set_active_tab(index);
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::SelectNextTab => {
+                if !self.tabs.is_empty() {
+                    self.set_active_tab((self.active_tab + 1) % self.tabs.len());
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::SelectPreviousTab => {
+                if !self.tabs.is_empty() {
+                    let prev = (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
+                    self.set_active_tab(prev);
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::SelectLastTab => {
+                if !self.tabs.is_empty() {
+                    self.set_active_tab(self.tabs.len() - 1);
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::ListTabs => {
+                let tabs: Vec<serde_json::Value> = self.tabs.iter().enumerate().map(|(i, t)| {
+                    serde_json::json!({
+                        "index": i + 1,
+                        "id": t.id.0,
+                        "title": t.display_title(),
+                        "active": i == self.active_tab,
+                        "pinned": t.pinned,
+                    })
+                }).collect();
+                ActionResult::data(serde_json::Value::Array(tabs))
+            },
+            crate::action::Action::MoveTab { index, delta } => {
+                if index < self.tabs.len() {
+                    let new = if delta < 0 {
+                        index.saturating_sub(delta.unsigned_abs() as usize)
+                    } else {
+                        (index + delta as usize).min(self.tabs.len() - 1)
+                    };
+                    self.tabs.swap(index, new);
+                    if self.active_tab == index { self.active_tab = new; }
+                    else if self.active_tab == new { self.active_tab = index; }
+                    self.dirty = true;
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::TogglePin { index } => {
+                if index < self.tabs.len() {
+                    self.tabs[index].pinned = !self.tabs[index].pinned;
+                    self.dirty = true;
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::SetTabTitle { title } => {
+                self.active_tab_mut().custom_title = if title.is_empty() { None } else { Some(title) };
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::SplitPane { direction } => {
+                match direction {
+                    SplitDir::Right => self.split_pane(PaneSplitDir::Horizontal),
+                    SplitDir::Down => self.split_pane(PaneSplitDir::Vertical),
+                }
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::ClosePane => {
+                self.close_pane();
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::FocusPane { direction } => {
+                match direction {
+                    FocusDir::Left => self.focus_pane(PaneFocusDir::Left),
+                    FocusDir::Right => self.focus_pane(PaneFocusDir::Right),
+                    FocusDir::Up => self.focus_pane(PaneFocusDir::Up),
+                    FocusDir::Down => self.focus_pane(PaneFocusDir::Down),
+                }
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::ToggleZoom => {
+                self.toggle_zoom();
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::ResizePane { direction, grow } => {
+                let sd = match direction {
+                    SplitDir::Right => PaneSplitDir::Horizontal,
+                    SplitDir::Down => PaneSplitDir::Vertical,
+                };
+                self.resize_pane(sd, grow);
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::SaveSession => {
+                let dir = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join(".config").join("alacritty").join("sessions");
+                std::fs::create_dir_all(&dir).ok();
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let path = dir.join(format!("session-{ts}.json"));
+                let data = self.tabs_save_json();
+                std::fs::write(&path, &data).ok();
+                ActionResult::success()
+            },
+            crate::action::Action::LoadSession { name } => {
+                let dir = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join(".config").join("alacritty").join("sessions");
+                let path = dir.join(format!("{name}.json"));
+                match std::fs::read(&path) {
+                    Ok(data) => {
+                        if let Err(err) = self.restore_tabs(&data) {
+                            ActionResult::err(format!("failed to restore: {err}"))
+                        } else {
+                            ActionResult::success()
+                        }
+                    },
+                    Err(err) => ActionResult::err(format!("cannot load {name}: {err}")),
+                }
+            },
+            crate::action::Action::ListSessions => {
+                let dir = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                    .join(".config").join("alacritty").join("sessions");
+                let mut sessions = Vec::new();
+                if let Ok(rd) = std::fs::read_dir(&dir) {
+                    for entry in rd.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if name.ends_with(".json") {
+                            sessions.push(serde_json::Value::String(name.trim_end_matches(".json").to_string()));
+                        }
+                    }
+                    sessions.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+                }
+                ActionResult::data(serde_json::Value::Array(sessions))
+            },
+            crate::action::Action::GetConfig => {
+                let config = serde_json::to_value(&*self.config).unwrap_or_default();
+                ActionResult::data(config)
+            },
+            crate::action::Action::SetConfig { options: _options, reset: _reset } => {
+                ActionResult::err("use msg config set (config updates not yet implemented)")
+            },
+            crate::action::Action::QuickRun { command, no_switch } => {
+                let options = crate::cli::TabCreateOptions {
+                    command,
+                    working_directory: None,
+                    no_switch,
+                    config_overrides: Vec::new(),
+                    window_id: None,
+                };
+                self.create_tab_ipc(options);
+                ActionResult::success()
+            },
+            crate::action::Action::Scroll { lines } => {
+                let tab = self.active_tab_mut();
+                let active_pid = tab.panes.active;
+                let terminal = if active_pid == PaneId(0) {
+                    tab.terminal.clone()
+                } else if let Some(pane) = tab.panes.additional.get(&active_pid) {
+                    pane.terminal.clone()
+                } else {
+                    tab.terminal.clone()
+                };
+                drop(tab);
+                terminal.lock().scroll_display(Scroll::Delta(lines));
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::Copy => ActionResult::err("copy via keyboard binding only"),
+            crate::action::Action::Paste { data: _ } => ActionResult::success(),
+            crate::action::Action::ToggleMenu => {
+                self.menu.toggle_pending = true;
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::MenuNavigate { direction } => {
+                match direction {
+                    MenuDir::Left => self.menu.op_pending.push(crate::event::MenuOp::FocusLeft),
+                    MenuDir::Right => self.menu.op_pending.push(crate::event::MenuOp::FocusRight),
+                }
+                ActionResult::success()
+            },
+            crate::action::Action::MenuSelect => {
+                self.menu.op_pending.push(crate::event::MenuOp::Select);
+                ActionResult::success()
+            },
+            crate::action::Action::MenuBack => {
+                self.menu.op_pending.push(crate::event::MenuOp::Back);
+                ActionResult::success()
+            },
+            crate::action::Action::MenuLetter { ch } => {
+                self.menu.op_pending.push(crate::event::MenuOp::LetterKey(ch));
+                ActionResult::success()
+            },
+            crate::action::Action::MenuClick { index } => {
+                self.menu.op_pending.push(crate::event::MenuOp::Click(index));
+                ActionResult::success()
+            },
+            crate::action::Action::Bell => {
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::SearchForward => {
+                let tab = self.active_tab_mut();
+                tab.search_state.direction = alacritty_terminal::index::Direction::Right;
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::SearchBackward => {
+                let tab = self.active_tab_mut();
+                tab.search_state.direction = alacritty_terminal::index::Direction::Left;
+                self.dirty = true;
+                ActionResult::success()
+            },
+            crate::action::Action::SearchNext => {
+                self.dirty = true;
+                ActionResult::success()
+            },
         }
     }
 
@@ -2168,6 +2388,20 @@ impl Drop for WindowContext {
             let _ = tab.notifier.0.send(Msg::Shutdown);
         }
     }
+}
+
+fn translate_config_overrides(config: Option<serde_json::Value>) -> Vec<String> {
+    let Some(config) = config else { return Vec::new() };
+    let obj = match config {
+        serde_json::Value::Object(map) => map,
+        _ => return Vec::new(),
+    };
+    obj.into_iter().map(|(k, v)| {
+        match v {
+            serde_json::Value::String(s) => format!("{k}={s}"),
+            other => format!("{k}={other}"),
+        }
+    }).collect()
 }
 
 #[cfg(test)]
