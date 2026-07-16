@@ -351,6 +351,48 @@ impl WindowContext {
         }
     }
 
+    pub fn handle_action(&mut self, action: crate::action::Action) -> crate::action::ActionResult {
+        use crate::action::ActionResult;
+        match action {
+            crate::action::Action::NewWindow { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::CloseWindow => ActionResult::err("not yet implemented"),
+            crate::action::Action::CreateTab { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::CloseTab { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::SelectTab { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::SelectNextTab => ActionResult::err("not yet implemented"),
+            crate::action::Action::SelectPreviousTab => ActionResult::err("not yet implemented"),
+            crate::action::Action::SelectLastTab => ActionResult::err("not yet implemented"),
+            crate::action::Action::ListTabs => ActionResult::err("not yet implemented"),
+            crate::action::Action::MoveTab { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::TogglePin { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::SetTabTitle { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::SplitPane { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::ClosePane => ActionResult::err("not yet implemented"),
+            crate::action::Action::FocusPane { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::ToggleZoom => ActionResult::err("not yet implemented"),
+            crate::action::Action::ResizePane { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::SaveSession => ActionResult::err("not yet implemented"),
+            crate::action::Action::LoadSession { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::ListSessions => ActionResult::err("not yet implemented"),
+            crate::action::Action::GetConfig => ActionResult::err("not yet implemented"),
+            crate::action::Action::SetConfig { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::QuickRun { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::Scroll { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::Copy => ActionResult::err("not yet implemented"),
+            crate::action::Action::Paste { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::ToggleMenu => ActionResult::err("not yet implemented"),
+            crate::action::Action::MenuNavigate { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::MenuSelect => ActionResult::err("not yet implemented"),
+            crate::action::Action::MenuBack => ActionResult::err("not yet implemented"),
+            crate::action::Action::MenuLetter { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::MenuClick { .. } => ActionResult::err("not yet implemented"),
+            crate::action::Action::Bell => ActionResult::err("not yet implemented"),
+            crate::action::Action::SearchForward => ActionResult::err("not yet implemented"),
+            crate::action::Action::SearchBackward => ActionResult::err("not yet implemented"),
+            crate::action::Action::SearchNext => ActionResult::err("not yet implemented"),
+        }
+    }
+
     fn set_active_tab(&mut self, index: usize) {
         if self.tabs.is_empty() {
             return;
