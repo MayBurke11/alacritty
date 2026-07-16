@@ -303,24 +303,30 @@ impl PaneNode {
         }
     }
 
-    pub fn leaf_rects(&self, viewport: Rect) -> (Vec<(PaneId, Rect)>, Vec<Rect>) {
+    pub fn leaf_rects(&self, viewport: Rect, margin: f32) -> (Vec<(PaneId, Rect)>, Vec<Rect>) {
         let mut panes = Vec::new();
         let mut dividers = Vec::new();
-        self.compute_rects(viewport, &mut panes, &mut dividers);
+        self.compute_rects(viewport, margin, &mut panes, &mut dividers);
         (panes, dividers)
     }
 
-    fn compute_rects(&self, rect: Rect, panes: &mut Vec<(PaneId, Rect)>, dividers: &mut Vec<Rect>) {
+    fn compute_rects(&self, rect: Rect, margin: f32, panes: &mut Vec<(PaneId, Rect)>, dividers: &mut Vec<Rect>) {
         match self {
             PaneNode::Leaf { pane_id, .. } => {
-                panes.push((*pane_id, rect));
+                let shrunk = Rect::new(
+                    rect.x + margin,
+                    rect.y + margin,
+                    (rect.width - 2.0 * margin).max(1.0),
+                    (rect.height - 2.0 * margin).max(1.0),
+                );
+                panes.push((*pane_id, shrunk));
             },
             PaneNode::Split { direction, ratio, a, b, .. } => {
                 let ratio = ratio.clamp(0.1, 0.9);
                 let (ra, divider, rb) = split_rect(rect, *direction, ratio);
                 dividers.push(divider);
-                a.compute_rects(ra, panes, dividers);
-                b.compute_rects(rb, panes, dividers);
+                a.compute_rects(ra, margin, panes, dividers);
+                b.compute_rects(rb, margin, panes, dividers);
             },
         }
     }
@@ -469,7 +475,7 @@ mod tests {
     fn leaf_rects_split_produces_two_rects() {
         let root = root_with_first_split();
         let viewport = Rect::new(0.0, 0.0, 100.0, 50.0);
-        let (panes, dividers) = root.leaf_rects(viewport);
+        let (panes, dividers) = root.leaf_rects(viewport, 0.0);
         assert_eq!(panes.len(), 2);
         assert_eq!(dividers.len(), 1);
     }
@@ -501,7 +507,7 @@ mod tests {
         root.split(PaneId(1), PaneId(2), SplitId(10), SplitDir::Horizontal);
         root.split(PaneId(2), PaneId(3), SplitId(11), SplitDir::Vertical);
         let viewport = Rect::new(0.0, 0.0, 100.0, 50.0);
-        let (panes, dividers) = root.leaf_rects(viewport);
+        let (panes, dividers) = root.leaf_rects(viewport, 0.0);
         assert_eq!(panes.len(), 3);
         assert_eq!(dividers.len(), 2);
     }
@@ -509,11 +515,11 @@ mod tests {
     // --- fixup_subtree tests ---
 
     fn leaf_rect_width(pane_id: u64, root: &PaneNode, vp: &Rect) -> f32 {
-        root.leaf_rects(vp.clone()).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.width
+        root.leaf_rects(vp.clone(), 0.0).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.width
     }
 
     fn leaf_rect_height(pane_id: u64, root: &PaneNode, vp: &Rect) -> f32 {
-        root.leaf_rects(vp.clone()).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.height
+        root.leaf_rects(vp.clone(), 0.0).0.iter().find(|(id,_)| id.0 == pane_id).unwrap().1.height
     }
 
     #[test]
@@ -603,7 +609,7 @@ mod tests {
         root.split(PaneId(3), PaneId(4), SplitId(12), SplitDir::Horizontal);
         root.split(PaneId(1), PaneId(5), SplitId(13), SplitDir::Vertical);
         let viewport = Rect::new(0.0, 0.0, 200.0, 100.0);
-        let (panes, dividers) = root.leaf_rects(viewport);
+        let (panes, dividers) = root.leaf_rects(viewport, 0.0);
         assert_eq!(panes.len(), 5);
         assert_eq!(dividers.len(), 4);
     }
