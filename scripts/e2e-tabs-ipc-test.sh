@@ -65,7 +65,7 @@ SOCKET_ARG="-s $SOCKET"
 echo ""
 echo "=== list-tabs ==="
 echo "[3] List tabs (expect 1 tab)"
-OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1) || OUT="error:$?"
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1) || OUT="error:$?"
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print('ok' if len(tabs)==1 else f'got {len(tabs)} tabs')" 2>/dev/null || echo "parse_err")
 assert_ok "list-tabs returns 1 tab" "$RESULT"
 
@@ -73,11 +73,11 @@ assert_ok "list-tabs returns 1 tab" "$RESULT"
 echo ""
 echo "=== create-tab ==="
 echo "[4] Create tab with htop"
-"$ALACRITTY" msg $SOCKET_ARG create-tab -e htop 2>&1 || true
+"$ALACRITTY" msg $SOCKET_ARG tab create -e htop 2>&1 || true
 sleep 1.5
 
 echo "[5] Verify tabs count = 2"
-OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1)
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1)
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print('ok' if len(tabs)==2 else f'got {len(tabs)} tabs')" 2>/dev/null || echo "parse_err")
 assert_ok "list-tabs returns 2 tabs" "$RESULT"
 
@@ -85,11 +85,11 @@ assert_ok "list-tabs returns 2 tabs" "$RESULT"
 echo ""
 echo "=== create-tab --no-switch ==="
 echo "[6] Create background tab (--no-switch)"
-"$ALACRITTY" msg $SOCKET_ARG create-tab --no-switch -e bash 2>&1 || true
+"$ALACRITTY" msg $SOCKET_ARG tab create --no-switch -e bash 2>&1 || true
 sleep 1.5
 
 echo "[7] Verify tabs count = 3"
-OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1)
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1)
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print('ok' if len(tabs)==3 else f'got {len(tabs)} tabs')" 2>/dev/null || echo "parse_err")
 assert_ok "list-tabs returns 3 tabs" "$RESULT"
 
@@ -101,11 +101,11 @@ assert_ok "active tab stayed on #2 after --no-switch" "$RESULT"
 echo ""
 echo "=== select-tab ==="
 echo "[9] Select tab 2"
-"$ALACRITTY" msg $SOCKET_ARG select-tab 2 2>&1 || true
+"$ALACRITTY" msg $SOCKET_ARG tab select 2 2>&1 || true
 sleep 0.5
 
 echo "[10] Verify active tab is #2"
-OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1)
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1)
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); active=[t['index'] for t in tabs if t['active']]; print('ok' if active and active[0]==2 else f'active={active}')" 2>/dev/null || echo "parse_err")
 assert_ok "active tab is #2 after select-tab" "$RESULT"
 
@@ -113,11 +113,11 @@ assert_ok "active tab is #2 after select-tab" "$RESULT"
 echo ""
 echo "=== close-tab ==="
 echo "[11] Close tab 3"
-"$ALACRITTY" msg $SOCKET_ARG close-tab 3 2>&1 || true
+"$ALACRITTY" msg $SOCKET_ARG tab close 3 2>&1 || true
 sleep 1.5
 
 echo "[12] Verify tabs count = 2"
-OUT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1)
+OUT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1)
 RESULT=$(echo "$OUT" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print('ok' if len(tabs)==2 else f'got {len(tabs)} tabs')" 2>/dev/null || echo "parse_err")
 assert_ok "list-tabs returns 2 tabs after close-tab" "$RESULT"
 

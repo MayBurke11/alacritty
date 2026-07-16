@@ -81,32 +81,32 @@ assert "list_tabs returns 1 tab initially" "ok" "$(echo "$RESULT" | python3 -c "
 # 2. Create tab
 send '{"action":"create_tab","no_switch":false}' > /dev/null
 sleep 1.0
-COUNT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+COUNT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 assert "create_tab: 2 tabs" "2" "$COUNT"
 
 # 3. Create tab --no-switch
 send '{"action":"create_tab","command":["bash"],"no_switch":true}' > /dev/null
 sleep 1.0
-COUNT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+COUNT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 assert "create_tab (no_switch): 3 tabs" "3" "$COUNT"
 
 # 4. Select tab
 send '{"action":"select_tab","index":0}' > /dev/null
 sleep 0.3
-ACTIVE=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print([x['index'] for x in t if x['active']][0])" 2>/dev/null || echo "0")
+ACTIVE=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print([x['index'] for x in t if x['active']][0])" 2>/dev/null || echo "0")
 assert "select_tab(0): active=1" "1" "$ACTIVE"
 
 # 5. Select next/prev/last
 send '{"action":"select_next_tab"}' > /dev/null; sleep 0.2
 send '{"action":"select_previous_tab"}' > /dev/null; sleep 0.2
 send '{"action":"select_last_tab"}' > /dev/null; sleep 0.2
-ACTIVE=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print([x['index'] for x in t if x['active']][0])" 2>/dev/null || echo "0")
+ACTIVE=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print([x['index'] for x in t if x['active']][0])" 2>/dev/null || echo "0")
 assert "select_last_tab: active=3" "3" "$ACTIVE"
 
 # 6. Pin tab
 send '{"action":"toggle_pin","index":2}' > /dev/null
 sleep 0.3
-PINNED=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print('pinned' if t[2]['pinned'] else 'not')" 2>/dev/null || echo "err")
+PINNED=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;t=json.load(sys.stdin);print('pinned' if t[2]['pinned'] else 'not')" 2>/dev/null || echo "err")
 assert "toggle_pin(2): pinned" "pinned" "$PINNED"
 send '{"action":"toggle_pin","index":2}' > /dev/null
 sleep 0.3
@@ -114,7 +114,7 @@ sleep 0.3
 # 7. Close tab
 send '{"action":"close_tab","index":2}' > /dev/null
 sleep 1.0
-COUNT=$("$ALACRITTY" msg $SOCKET_ARG list-tabs 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+COUNT=$("$ALACRITTY" msg $SOCKET_ARG tab list 2>&1 | python3 -c "import sys,json;print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 assert "close_tab: 2 tabs" "2" "$COUNT"
 
 # ===== PANE TESTS =====
@@ -200,14 +200,14 @@ assert "msg pane close" "ok" "ok"
 assert "msg session list" "ok" "ok"
 
 # 21. tab-nav
-"$ALACRITTY" msg $SOCKET_ARG tab-nav next > /dev/null 2>&1; sleep 0.2
-"$ALACRITTY" msg $SOCKET_ARG tab-nav previous > /dev/null 2>&1; sleep 0.2
-"$ALACRITTY" msg $SOCKET_ARG tab-nav last > /dev/null 2>&1; sleep 0.2
-assert "msg tab-nav next/prev/last" "ok" "ok"
+"$ALACRITTY" msg $SOCKET_ARG tab next > /dev/null 2>&1; sleep 0.2
+"$ALACRITTY" msg $SOCKET_ARG tab previous > /dev/null 2>&1; sleep 0.2
+"$ALACRITTY" msg $SOCKET_ARG tab last > /dev/null 2>&1; sleep 0.2
+assert "msg tab next/prev/last" "ok" "ok"
 
 # 22. scroll-view
 "$ALACRITTY" msg $SOCKET_ARG scroll-view 5 > /dev/null 2>&1
-assert "msg scroll-view 5" "ok" "ok"
+assert "msg scroll 5" "ok" "ok"
 
 # 23. bell
 "$ALACRITTY" msg $SOCKET_ARG bell > /dev/null 2>&1

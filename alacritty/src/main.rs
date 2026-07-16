@@ -398,7 +398,7 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
             "\n",
             "[Desktop Action NewWindow]\n",
             "Name=New Window\n",
-            "Exec={exe_path} msg create-window\n",
+            "Exec={exe_path} msg window create\n",
         ), exe_path=exe_path);
         std::fs::write(&desktop_path, content)?;
         info!("Installed desktop entry: {}", desktop_path.display());

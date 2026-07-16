@@ -183,7 +183,7 @@ Actions=NewWindow;
 
 [Desktop Action NewWindow]
 Name=New Window
-Exec=${EXE} msg create-window
+Exec=${EXE} msg window create
 DESKTOP
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "${APPS_DIR}" 2>/dev/null || true
 green "  ✓ ${APPS_DIR}/alacritty.desktop"
