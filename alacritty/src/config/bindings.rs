@@ -632,6 +632,7 @@ fn common_keybindings() -> Vec<KeyBinding> {
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT;                                     Action::QuickRun;
         "p",        ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT;              Action::TogglePin;
         "g",        ModifiersState::CONTROL;                                                             Action::ToggleLocked;
+        "f",        ModifiersState::ALT;                                                                 Action::ToggleZoom;
     )
 }
 
