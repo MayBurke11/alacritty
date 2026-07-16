@@ -22,9 +22,10 @@ assert() {
 
 send() {
   python3 -c "
-import socket, json, sys, time
+import socket, json, sys
 data = sys.argv[1]
 s = socket.socket(socket.AF_UNIX)
+s.settimeout(2.0)
 s.connect('$SOCKET')
 s.sendall(data.encode() + b'\n')
 s.shutdown(1)
