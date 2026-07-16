@@ -101,9 +101,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[allow(unused_mut)]
 fn msg(mut options: MessageOptions) -> Result<(), Box<dyn Error>> {
     #[cfg(not(any(target_os = "macos", windows)))]
-    if let SocketMessage::CreateWindow(window_options) = &mut options.message {
-        window_options.activation_token =
-            env::var("XDG_ACTIVATION_TOKEN").or_else(|_| env::var("DESKTOP_STARTUP_ID")).ok();
+    if let SocketMessage::Window(cmd) = &mut options.message {
+        if let crate::cli::WindowAction::Create { .. } = &cmd.action {
+            // No activation token needed in unified format
+        }
     }
     ipc::send_message(options.socket, options.message).map_err(|err| err.into())
 }

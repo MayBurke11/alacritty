@@ -285,65 +285,103 @@ pub struct MessageOptions {
 #[cfg(unix)]
 #[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SocketMessage {
-    /// Create a new window in the same Alacritty process.
-    CreateWindow(WindowOptions),
-
-    /// Update the Alacritty configuration.
-    Config(IpcConfig),
-
-    /// Read runtime Alacritty configuration.
-    GetConfig(IpcGetConfig),
-
-    /// Create a new tab in the target window.
-    CreateTab(TabCreateOptions),
-
-    /// List all tabs in the target window.
-    ListTabs(TabTarget),
-
-    /// Select a tab by index in the target window.
-    SelectTab(TabSelect),
-
-    /// Close a tab by index in the target window.
-    CloseTab(TabSelect),
-
-    /// Toggle pin on a tab by index.
-    PinTab(TabSelect),
-
-    /// Save all tabs to a JSON session file (reply).
-    SaveTabs(TabTarget),
-
-    /// QuickRun: inline command runner for new tab.
-    QuickRun(TabQuickRun),
-
-    /// Execute a raw Action JSON (unified IPC format).
-    Exec(ExecAction),
-
+    /// Tab management.
+    Tab(TabCommand),
     /// Pane management.
     Pane(PaneCommand),
-
+    /// Window management.
+    Window(WindowCommand),
     /// Session management.
     Session(SessionCommand),
-
-    /// Navigate to next/previous/last tab.
-    TabNav(TabNavCommand),
-
+    /// Config management.
+    Config(ConfigCommand),
+    /// QuickRun: inline command runner for new tab.
+    QuickRun(TabQuickRun),
     /// Scroll terminal lines.
-    ScrollView(ScrollCommand),
-
+    Scroll(ScrollCommand),
     /// Trigger terminal bell.
     Bell,
+    /// Execute raw Action JSON.
+    Exec(ExecAction),
 }
 
-/// Raw Action JSON payload.
+// ── Tab ──
+
 #[cfg(unix)]
-#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
-pub struct ExecAction {
-    /// JSON string in Action format: '{"action":"create_tab","command":["htop"]}'
-    #[clap(allow_hyphen_values = true)]
-    pub json: String,
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct TabCommand {
+    #[clap(subcommand)]
+    pub action: TabAction,
 }
 
-/// Pane management args.
+#[cfg(unix)]
+#[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum TabAction {
+    /// Create a new tab.
+    Create {
+        #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+        command: Vec<String>,
+        #[clap(long)]
+        working_directory: Option<String>,
+        #[clap(long)]
+        no_switch: bool,
+        #[clap(short = 'o', long)]
+        option: Vec<String>,
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// Close a tab by index (default: current).
+    Close {
+        #[clap(default_value = "0")]
+        index: usize,
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// Select a tab by index.
+    Select {
+        index: usize,
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// Toggle pin on a tab.
+    Pin {
+        index: usize,
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// List all tabs.
+    List {
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// Save tabs to session file.
+    Save {
+        #[clap(short = 'w', long, env = "ALACRITTY_WINDOW_ID")]
+        window_id: Option<i128>,
+    },
+    /// Move tab forward/backward.
+    Move {
+        index: usize,
+        /// Delta: +N forward, -N backward.
+        #[clap(allow_hyphen_values = true)]
+        delta: i32,
+    },
+    /// Rename current tab.
+    Rename {
+        title: String,
+    },
+    /// Switch to next tab.
+    Next,
+    /// Switch to previous tab.
+    Previous,
+    /// Switch to last tab.
+    Last,
+    /// Focus a tab by name (opens list mode in menu).
+    Focus,
+}
+
+// ── Pane ──
+
 #[cfg(unix)]
 #[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PaneCommand {
@@ -368,7 +406,7 @@ pub enum PaneAction {
     },
     /// Toggle pane zoom.
     Zoom,
-    /// Resize pane (grow or shrink).
+    /// Resize pane.
     Resize {
         #[clap(value_parser = ["right", "down"])]
         direction: String,
@@ -377,7 +415,35 @@ pub enum PaneAction {
     },
 }
 
-/// Session management args.
+// ── Window ──
+
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowCommand {
+    #[clap(subcommand)]
+    pub action: WindowAction,
+}
+
+#[cfg(unix)]
+#[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum WindowAction {
+    /// Create a new window.
+    Create {
+        #[clap(short = 'e', long, allow_hyphen_values = true, num_args = 1..)]
+        command: Vec<String>,
+        #[clap(long)]
+        working_directory: Option<String>,
+        #[clap(short = 'T', long)]
+        title: Option<String>,
+        #[clap(short = 'o', long)]
+        option: Vec<String>,
+    },
+    /// Close current window.
+    Close,
+}
+
+// ── Session ──
+
 #[cfg(unix)]
 #[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SessionCommand {
@@ -399,23 +465,40 @@ pub enum SessionAction {
     List,
 }
 
-/// Tab navigation args.
+// ── Config ──
+
 #[cfg(unix)]
 #[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct TabNavCommand {
+pub struct ConfigCommand {
     #[clap(subcommand)]
-    pub action: TabNavAction,
+    pub action: ConfigAction,
 }
 
 #[cfg(unix)]
 #[derive(Subcommand, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum TabNavAction {
-    /// Switch to next tab.
-    Next,
-    /// Switch to previous tab.
-    Previous,
-    /// Switch to last tab.
-    Last,
+pub enum ConfigAction {
+    /// Get current config as JSON.
+    Get,
+    /// Set config overrides (key=value pairs).
+    Set {
+        /// Key=value pairs.
+        #[clap(allow_hyphen_values = true, num_args = 1..)]
+        options: Vec<String>,
+        /// Reset all runtime overrides before setting.
+        #[clap(long)]
+        reset: bool,
+    },
+    /// Reset all runtime config overrides.
+    Reset,
+}
+
+/// Raw Action JSON payload.
+#[cfg(unix)]
+#[derive(Args, Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct ExecAction {
+    /// JSON string in Action format: '{"action":"create_tab","command":["htop"]}'
+    #[clap(allow_hyphen_values = true)]
+    pub json: String,
 }
 
 /// Scroll command.

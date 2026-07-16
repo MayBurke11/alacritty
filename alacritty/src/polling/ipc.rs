@@ -92,126 +92,129 @@ impl IpcListener {
 
         // Handle IPC events.
         match message {
-            SocketMessage::CreateWindow(_) => {
-                let action = crate::action::Action::NewWindow { command: None, cwd: None, config: None };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::Config(ipc_config) => {
-                let window_id =
-                    ipc_config.window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
-                let event = Event::new(EventType::IpcConfig(ipc_config), window_id);
-                let _ = self.event_proxy.send_event(event);
-            },
-            SocketMessage::GetConfig(config) => {
-                let window_id =
-                    config.window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
-                let event = Event::new(EventType::IpcGetConfig(Arc::new(stream)), window_id);
-                let _ = self.event_proxy.send_event(event);
-            },
-            SocketMessage::CreateTab(options) => {
-                let action = crate::action::Action::CreateTab {
-                    command: if options.command.is_empty() { None } else { Some(options.command.clone()) },
-                    cwd: options.working_directory.map(|p| p.to_string_lossy().to_string()),
-                    config: None,
-                    no_switch: options.no_switch,
-                };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::ListTabs(options) => {
-                let event = Event::new(EventType::ListTabsIPC(Arc::new(stream), options.window_id), None);
-                let _ = self.event_proxy.send_event(event);
-            },
-            SocketMessage::SelectTab(options) => {
-                let action = crate::action::Action::SelectTab { index: options.index.saturating_sub(1) };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::CloseTab(options) => {
-                let action = crate::action::Action::CloseTab { index: Some(options.index.saturating_sub(1)) };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::PinTab(options) => {
-                let action = crate::action::Action::TogglePin { index: options.index.saturating_sub(1) };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::SaveTabs(options) => {
-                let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream), options.window_id), None);
-                let _ = self.event_proxy.send_event(event);
-            },
-            SocketMessage::QuickRun(options) => {
-                let action = crate::action::Action::QuickRun {
-                    command: options.command.clone(),
-                    no_switch: options.no_switch,
-                };
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
-            },
-            SocketMessage::Exec(exec) => {
-                match serde_json::from_str::<crate::action::Action>(&exec.json) {
-                    Ok(action) => {
-                        let event = Event::new(EventType::IpcAction(action), None);
+            SocketMessage::Tab(cmd) => {
+                use crate::action::{Action as A, FocusDir, SplitDir};
+                use crate::cli::TabAction as TA;
+                let action = match &cmd.action {
+                    TA::Create { command, working_directory, no_switch, .. } => A::CreateTab {
+                        command: if command.is_empty() { None } else { Some(command.clone()) },
+                        cwd: working_directory.clone().map(std::path::PathBuf::from).map(|p| p.to_string_lossy().to_string()),
+                        config: None,
+                        no_switch: *no_switch,
+                    },
+                    TA::Close { index, .. } => A::CloseTab { index: Some(index.saturating_sub(1)) },
+                    TA::Select { index, .. } => A::SelectTab { index: index.saturating_sub(1) },
+                    TA::Pin { index, .. } => A::TogglePin { index: index.saturating_sub(1) },
+                    TA::List { .. } => {
+                        let event = Event::new(EventType::ListTabsIPC(Arc::new(stream), None), None);
                         let _ = self.event_proxy.send_event(event);
+                        return Ok(());
                     },
-                    Err(err) => {
-                        warn!("Failed to parse Action JSON: {err}");
+                    TA::Save { .. } => {
+                        let event = Event::new(EventType::SaveTabsIPC(Arc::new(stream), None), None);
+                        let _ = self.event_proxy.send_event(event);
+                        return Ok(());
                     },
-                }
+                    TA::Move { index, delta } => A::MoveTab { index: index.saturating_sub(1), delta: *delta },
+                    TA::Rename { title } => A::SetTabTitle { title: title.clone() },
+                    TA::Next => A::SelectNextTab,
+                    TA::Previous => A::SelectPreviousTab,
+                    TA::Last => A::SelectLastTab,
+                    TA::Focus => A::ToggleMenu, // opens menu list mode
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Pane(cmd) => {
-                use crate::action::{Action as AppAction, FocusDir, SplitDir};
-                use crate::cli::PaneAction;
+                use crate::action::{Action as A, FocusDir, SplitDir};
+                use crate::cli::PaneAction as PA;
                 let action = match &cmd.action {
-                    PaneAction::Split { direction } => AppAction::SplitPane {
+                    PA::Split { direction } => A::SplitPane {
+                        direction: if direction == "right" { SplitDir::Right } else { SplitDir::Down },
+                    },
+                    PA::Close => A::ClosePane,
+                    PA::Focus { direction } => A::FocusPane {
                         direction: match direction.as_str() {
-                            "right" => SplitDir::Right,
-                            _ => SplitDir::Down,
+                            "left" => FocusDir::Left, "right" => FocusDir::Right,
+                            "up" => FocusDir::Up, _ => FocusDir::Down,
                         },
                     },
-                    PaneAction::Close => AppAction::ClosePane,
-                    PaneAction::Focus { direction } => AppAction::FocusPane {
-                        direction: match direction.as_str() {
-                            "left" => FocusDir::Left,
-                            "right" => FocusDir::Right,
-                            "up" => FocusDir::Up,
-                            _ => FocusDir::Down,
-                        },
+                    PA::Zoom => A::ToggleZoom,
+                    PA::Resize { direction, action: ra } => A::ResizePane {
+                        direction: if direction == "right" { SplitDir::Right } else { SplitDir::Down },
+                        grow: ra == "grow",
                     },
-                    PaneAction::Zoom => AppAction::ToggleZoom,
-                    PaneAction::Resize { direction, action: resize_action } => AppAction::ResizePane {
-                        direction: match direction.as_str() {
-                            "right" => SplitDir::Right,
-                            _ => SplitDir::Down,
-                        },
-                        grow: resize_action == "grow",
+                };
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+            },
+            SocketMessage::Window(cmd) => {
+                use crate::action::Action as A;
+                use crate::cli::WindowAction as WA;
+                let action = match &cmd.action {
+                    WA::Create { command, working_directory, title: _, .. } => A::NewWindow {
+                        command: if command.is_empty() { None } else { Some(command.clone()) },
+                        cwd: working_directory.clone(),
+                        config: None,
                     },
+                    WA::Close => A::CloseWindow,
                 };
                 let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Session(cmd) => {
-                use crate::action::Action as AppAction;
-                use crate::cli::SessionAction;
+                use crate::action::Action as A;
+                use crate::cli::SessionAction as SA;
                 let action = match &cmd.action {
-                    SessionAction::Save => AppAction::SaveSession,
-                    SessionAction::Load { name } => AppAction::LoadSession { name: name.clone() },
-                    SessionAction::List => AppAction::ListSessions,
+                    SA::Save => A::SaveSession,
+                    SA::Load { name } => A::LoadSession { name: name.clone() },
+                    SA::List => A::ListSessions,
                 };
                 let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
-            SocketMessage::TabNav(cmd) => {
-                use crate::action::Action as AppAction;
-                use crate::cli::TabNavAction;
+            SocketMessage::Config(cmd) => {
+                use crate::action::Action as A;
+                use crate::cli::ConfigAction as CA;
                 let action = match &cmd.action {
-                    TabNavAction::Next => AppAction::SelectNextTab,
-                    TabNavAction::Previous => AppAction::SelectPreviousTab,
-                    TabNavAction::Last => AppAction::SelectLastTab,
+                    CA::Get => {
+                        let event = Event::new(EventType::IpcGetConfig(Arc::new(stream)), None);
+                        let _ = self.event_proxy.send_event(event);
+                        return Ok(());
+                    },
+                    CA::Set { options, reset } => {
+                        use std::collections::HashMap;
+                        let mut map = HashMap::new();
+                        for opt in options {
+                            if let Some((k, v)) = opt.split_once('=') {
+                                map.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+                            }
+                        }
+                        A::SetConfig { options: map, reset: *reset }
+                    },
+                    CA::Reset => A::SetConfig { options: Default::default(), reset: true },
+                };
+                if !matches!(&cmd.action, CA::Get) {
+                    let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                }
+            },
+            SocketMessage::QuickRun(opts) => {
+                let action = crate::action::Action::QuickRun {
+                    command: opts.command.clone(),
+                    no_switch: opts.no_switch,
                 };
                 let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
-            SocketMessage::ScrollView(cmd) => {
+            SocketMessage::Scroll(cmd) => {
                 let action = crate::action::Action::Scroll { lines: cmd.lines };
                 let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
             },
             SocketMessage::Bell => {
-                let action = crate::action::Action::Bell;
-                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(crate::action::Action::Bell), None));
+            },
+            SocketMessage::Exec(exec) => {
+                match serde_json::from_str::<crate::action::Action>(&exec.json) {
+                    Ok(action) => {
+                        let _ = self.event_proxy.send_event(Event::new(EventType::IpcAction(action), None));
+                    },
+                    Err(err) => warn!("Failed to parse Action JSON: {err}"),
+                }
             },
         }
 
@@ -272,21 +275,17 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
 }
 
 fn handle_socket_reply(message: &SocketMessage, reply: &SocketReply) -> IoResult<()> {
-    match (message, reply) {
-        (SocketMessage::GetConfig(..), SocketReply::GetConfig(config)) => {
-            println!("{config}");
-            Ok(())
-        },
-        (SocketMessage::ListTabs(..), SocketReply::ListTabs(tabs)) => {
-            println!("{tabs}");
-            Ok(())
-        },
-        (SocketMessage::SaveTabs(..), SocketReply::SaveTabs(tabs)) => {
-            println!("{tabs}");
-            Ok(())
-        },
-        _ => Ok(()),
+    let is_get_config = matches!(message, SocketMessage::Config(cmd) if matches!(cmd.action, crate::cli::ConfigAction::Get));
+    let is_list_tabs = matches!(message, SocketMessage::Tab(cmd) if matches!(cmd.action, crate::cli::TabAction::List { .. }));
+    let is_save_tabs = matches!(message, SocketMessage::Tab(cmd) if matches!(cmd.action, crate::cli::TabAction::Save { .. }));
+
+    match (is_get_config, is_list_tabs, is_save_tabs, reply) {
+        (true, _, _, SocketReply::GetConfig(config)) => println!("{config}"),
+        (_, true, _, SocketReply::ListTabs(tabs)) => println!("{tabs}"),
+        (_, _, true, SocketReply::SaveTabs(tabs)) => println!("{tabs}"),
+        _ => {},
     }
+    Ok(())
 }
 
 /// Send IPC message reply.
