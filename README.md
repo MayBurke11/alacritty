@@ -24,12 +24,14 @@ All commands work over Unix socket (`$XDG_RUNTIME_DIR`) or TCP (`--tcp-addr`):
 
 ```bash
 # Tab management
-alacritty msg create-tab -e htop
-alacritty msg list-tabs
-alacritty msg select-tab 1
-alacritty msg close-tab 2
-alacritty msg pin-tab 1
-alacritty msg tab-nav next|previous|last
+alacritty msg tab create -e htop
+alacritty msg tab list
+alacritty msg tab select 1
+alacritty msg tab close 2
+alacritty msg tab pin 1
+alacritty msg tab rename "My Tab"
+alacritty msg tab next|previous|last
+alacritty msg tab move 1 -1
 
 # Pane management
 alacritty msg pane split right|down
@@ -38,18 +40,21 @@ alacritty msg pane zoom
 alacritty msg pane resize right grow|shrink
 alacritty msg pane close
 
+# Window management
+alacritty msg window create -e htop
+alacritty msg window close
+
 # Session & Config
 alacritty msg session save|list|load NAME
 alacritty msg config get
 alacritty msg config set font.size=14
-alacritty msg scroll-view 5
+alacritty msg config reset
+alacritty msg scroll 5
 alacritty msg bell
 
 # Universal JSON format (all actions)
 alacritty msg exec '{"action":"create_tab","command":["htop"]}'
 alacritty msg exec '{"action":"split_pane","direction":"right"}'
-alacritty msg exec '{"action":"focus_pane","direction":"left"}'
-alacritty msg exec '{"action":"select_next_tab"}'
 ```
 
 **TCP server:**
