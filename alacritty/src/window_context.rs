@@ -309,6 +309,65 @@ impl WindowContext {
         self.dirty = true;
     }
 
+    /// Returns true if the caller should `continue` to the next event.
+    fn dispatch_tab_action(&mut self, action: &TabAction) -> bool {
+        use crate::action::Action as AppAction;
+        use crate::action::{FocusDir, MenuDir, SplitDir};
+        let app_action = match action {
+            TabAction::Create => AppAction::CreateTab { command: None, cwd: None, config: None, no_switch: false },
+            TabAction::Close => AppAction::CloseTab { index: None },
+            TabAction::ConfirmWindowClose => { self.confirm_window_close(); return true; },
+            TabAction::CancelWindowClose => { self.cancel_window_close_confirmation(); return true; },
+            TabAction::SelectNext => AppAction::SelectNextTab,
+            TabAction::SelectPrevious => AppAction::SelectPreviousTab,
+            TabAction::Select(index) => AppAction::SelectTab { index: *index },
+            TabAction::SelectLast => AppAction::SelectLastTab,
+            TabAction::MoveForward => AppAction::MoveTab { index: self.active_tab, delta: 1 },
+            TabAction::MoveBackward => AppAction::MoveTab { index: self.active_tab, delta: -1 },
+            TabAction::SetTitle => { self.start_tab_title_editor(); return true; },
+            TabAction::ConfirmTitle => { self.confirm_tab_title_editor(); return true; },
+            TabAction::CancelTitle => { self.cancel_tab_title_editor(); return true; },
+            TabAction::TitleInput(c) => { self.tab_title_input(*c); return true; },
+            TabAction::TitlePopWord => { self.tab_title_pop_word(); return true; },
+            TabAction::Run => { self.start_run_editor(); return true; },
+            TabAction::ConfirmRun => { self.confirm_run_editor(false); return true; },
+            TabAction::ConfirmRunNoSwitch => { self.confirm_run_editor(true); return true; },
+            TabAction::CancelRun => { self.cancel_run_editor(); return true; },
+            TabAction::RunInput(c) => { self.run_editor_input(*c); return true; },
+            TabAction::RunPopWord => { self.run_editor_pop_word(); return true; },
+            TabAction::TogglePin => AppAction::TogglePin { index: self.active_tab },
+            TabAction::ToggleMenu(idx) => {
+                self.menu.state.focus = *idx;
+                let sel = self.menu.state.select(&self.config.menu);
+                self.handle_menu_selection(sel);
+                self.dirty = true;
+                return true;
+            },
+            TabAction::MenuCommand(_, _) => { self.dirty = true; return true; },
+            TabAction::ToggleLocked => AppAction::ToggleMenu,
+            TabAction::MenuFocusLeft => AppAction::MenuNavigate { direction: MenuDir::Left },
+            TabAction::MenuFocusRight => AppAction::MenuNavigate { direction: MenuDir::Right },
+            TabAction::MenuSelect => AppAction::MenuSelect,
+            TabAction::MenuBack => AppAction::MenuBack,
+            TabAction::MenuClick(idx) => AppAction::MenuClick { index: *idx },
+            TabAction::MenuLetterKey(ch) => AppAction::MenuLetter { ch: *ch },
+            TabAction::SplitRight => AppAction::SplitPane { direction: SplitDir::Right },
+            TabAction::SplitDown => AppAction::SplitPane { direction: SplitDir::Down },
+            TabAction::ClosePane => AppAction::ClosePane,
+            TabAction::FocusLeft => AppAction::FocusPane { direction: FocusDir::Left },
+            TabAction::FocusRight => AppAction::FocusPane { direction: FocusDir::Right },
+            TabAction::FocusUp => AppAction::FocusPane { direction: FocusDir::Up },
+            TabAction::FocusDown => AppAction::FocusPane { direction: FocusDir::Down },
+            TabAction::ToggleZoom => AppAction::ToggleZoom,
+            TabAction::ResizeRight => AppAction::ResizePane { direction: SplitDir::Right, grow: true },
+            TabAction::ResizeLeft => AppAction::ResizePane { direction: SplitDir::Right, grow: false },
+            TabAction::ResizeUp => AppAction::ResizePane { direction: SplitDir::Down, grow: false },
+            TabAction::ResizeDown => AppAction::ResizePane { direction: SplitDir::Down, grow: true },
+        };
+        let _ = self.handle_action(app_action);
+        false
+    }
+
     fn sync_focus(&mut self) {
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             let is_active_tab = self.focused && index == self.active_tab;
@@ -1642,60 +1701,7 @@ impl WindowContext {
                     let _ = self.handle_action(action.clone());
                 },
                 WinitEvent::UserEvent(Event { payload: EventType::Tab(action), .. }) => {
-                    use crate::action::Action as AppAction;
-                    use crate::action::{FocusDir, MenuDir, SplitDir};
-                    let app_action = match action {
-                        TabAction::Create => AppAction::CreateTab { command: None, cwd: None, config: None, no_switch: false },
-                        TabAction::Close => AppAction::CloseTab { index: None },
-                        TabAction::ConfirmWindowClose => { self.confirm_window_close(); continue; },
-                        TabAction::CancelWindowClose => { self.cancel_window_close_confirmation(); continue; },
-                        TabAction::SelectNext => AppAction::SelectNextTab,
-                        TabAction::SelectPrevious => AppAction::SelectPreviousTab,
-                        TabAction::Select(index) => AppAction::SelectTab { index: *index },
-                        TabAction::SelectLast => AppAction::SelectLastTab,
-                        TabAction::MoveForward => AppAction::MoveTab { index: self.active_tab, delta: 1 },
-                        TabAction::MoveBackward => AppAction::MoveTab { index: self.active_tab, delta: -1 },
-                        TabAction::SetTitle => { self.start_tab_title_editor(); continue; },
-                        TabAction::ConfirmTitle => { self.confirm_tab_title_editor(); continue; },
-                        TabAction::CancelTitle => { self.cancel_tab_title_editor(); continue; },
-                        TabAction::TitleInput(c) => { self.tab_title_input(*c); continue; },
-                        TabAction::TitlePopWord => { self.tab_title_pop_word(); continue; },
-                        TabAction::Run => { self.start_run_editor(); continue; },
-                        TabAction::ConfirmRun => { self.confirm_run_editor(false); continue; },
-                        TabAction::ConfirmRunNoSwitch => { self.confirm_run_editor(true); continue; },
-                        TabAction::CancelRun => { self.cancel_run_editor(); continue; },
-                        TabAction::RunInput(c) => { self.run_editor_input(*c); continue; },
-                        TabAction::RunPopWord => { self.run_editor_pop_word(); continue; },
-                        TabAction::TogglePin => AppAction::TogglePin { index: self.active_tab },
-                        TabAction::ToggleMenu(idx) => {
-                            self.menu.state.focus = *idx;
-                            let sel = self.menu.state.select(&self.config.menu);
-                            self.handle_menu_selection(sel);
-                            self.dirty = true;
-                            continue;
-                        },
-                        TabAction::MenuCommand(_, _) => { self.dirty = true; continue; },
-                        TabAction::ToggleLocked => AppAction::ToggleMenu,
-                        TabAction::MenuFocusLeft => AppAction::MenuNavigate { direction: MenuDir::Left },
-                        TabAction::MenuFocusRight => AppAction::MenuNavigate { direction: MenuDir::Right },
-                        TabAction::MenuSelect => AppAction::MenuSelect,
-                        TabAction::MenuBack => AppAction::MenuBack,
-                        TabAction::MenuClick(idx) => AppAction::MenuClick { index: *idx },
-                        TabAction::MenuLetterKey(ch) => AppAction::MenuLetter { ch: *ch },
-                        TabAction::SplitRight => AppAction::SplitPane { direction: SplitDir::Right },
-                        TabAction::SplitDown => AppAction::SplitPane { direction: SplitDir::Down },
-                        TabAction::ClosePane => AppAction::ClosePane,
-                        TabAction::FocusLeft => AppAction::FocusPane { direction: FocusDir::Left },
-                        TabAction::FocusRight => AppAction::FocusPane { direction: FocusDir::Right },
-                        TabAction::FocusUp => AppAction::FocusPane { direction: FocusDir::Up },
-                        TabAction::FocusDown => AppAction::FocusPane { direction: FocusDir::Down },
-                        TabAction::ToggleZoom => AppAction::ToggleZoom,
-                        TabAction::ResizeRight => AppAction::ResizePane { direction: SplitDir::Right, grow: true },
-                        TabAction::ResizeLeft => AppAction::ResizePane { direction: SplitDir::Right, grow: false },
-                        TabAction::ResizeUp => AppAction::ResizePane { direction: SplitDir::Down, grow: false },
-                        TabAction::ResizeDown => AppAction::ResizePane { direction: SplitDir::Down, grow: true },
-                    };
-                    let _ = self.handle_action(app_action);
+                    if self.dispatch_tab_action(action) { continue; }
                 },
                 _ => (),
             }
