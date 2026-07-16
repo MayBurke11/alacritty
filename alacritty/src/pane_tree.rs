@@ -35,7 +35,7 @@ pub enum PaneNode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
+
 #[derive(Serialize, Deserialize)]
 pub enum FocusDir {
     Left,
@@ -67,7 +67,7 @@ impl Default for PaneNode {
 }
 
 impl PaneNode {
-    #[allow(dead_code)]
+    
     pub fn leaf(pane_id: PaneId) -> Self {
         PaneNode::Leaf { pane_id, last_size: (80, 24) }
     }
